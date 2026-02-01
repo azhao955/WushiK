@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Card as CardType, GameState, Player, PlayedHand } from '../types/game';
+import type { Card as CardType, GameState, Player, PlayedHand, PlayLogEntry } from '../types/game';
 import { Card, getCardDisplayString, isRedSuit } from './Card';
 import {
   createDeck,
@@ -37,8 +37,9 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [playAreaError, setPlayAreaError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [playLog, setPlayLog] = useState<Array<{ playerName: string; action: string; cards?: CardType[]; time: number }>>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [specialEffect, setSpecialEffect] = useState<'wushik' | 'bomb' | 'counter' | null>(null);
+  const [showPlayLog, setShowPlayLog] = useState(false); // For mobile toggle
 
   // Get consistent color for each player
   const getPlayerColor = (playerName: string): string => {
@@ -222,6 +223,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       gameStatus: 'waiting',
       theme: config?.theme || 'default',
       aiDifficulty: config?.aiDifficulty || 'medium',
+      playLog: [],
     };
 
     const { error } = await supabase
@@ -536,6 +538,17 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const playHand = async (cards: CardType[], handType: string) => {
     if (!gameState) return;
 
+    // Check for special effects
+    if (handType === 'wushik' || handType === 'bomb') {
+      if (gameState.currentHand && (gameState.currentHand.type === 'wushik' || gameState.currentHand.type === 'bomb')) {
+        setSpecialEffect('counter');
+        setTimeout(() => setSpecialEffect(null), 2000);
+      } else {
+        setSpecialEffect(handType as 'wushik' | 'bomb');
+        setTimeout(() => setSpecialEffect(null), 1500);
+      }
+    }
+
     const newPlayers = gameState.players.map(p => {
       if (p.id === playerId) {
         const newHand = p.hand.filter(c => !cards.some(pc => pc.id === c.id));
@@ -556,6 +569,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     const newPlayedCards = [...gameState.playedCards, ...cards];
 
+    const newLogEntry: PlayLogEntry = {
+      playerName,
+      action: `Played ${handType}`,
+      cards: cards,
+      time: Date.now(),
+    };
+
     const updatedState: GameState = {
       ...gameState,
       players: newPlayers,
@@ -568,19 +588,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       playedCards: newPlayedCards,
       passedPlayerIds: [],
       currentPlayerId: getNextPlayerId(),
+      playLog: [...(gameState.playLog || []), newLogEntry],
     };
 
     await updateGameState(updatedState);
     setSelectedCards([]);
     setMessage(`You played ${handType}!`);
-
-    // Add to play log
-    setPlayLog(prev => [...prev, {
-      playerName,
-      action: `Played ${handType}`,
-      cards: cards,
-      time: Date.now(),
-    }]);
 
     // Check if round ended
     await checkRoundEnd(newPlayers);
@@ -590,6 +603,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     if (!gameState || !isMyTurn()) return;
 
     const newPassedIds = [...gameState.passedPlayerIds, playerId];
+
+    const newLogEntry: PlayLogEntry = {
+      playerName,
+      action: 'Passed',
+      time: Date.now(),
+    };
 
     // Check if all other active players have passed
     const activePlayers = gameState.players.filter(p => !p.hasFinished);
@@ -605,18 +624,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         ...gameState,
         passedPlayerIds: newPassedIds,
         currentPlayerId: getNextPlayerId(),
+        playLog: [...(gameState.playLog || []), newLogEntry],
       };
       await updateGameState(updatedState);
     }
 
     setMessage('You passed.');
-
-    // Add to play log
-    setPlayLog(prev => [...prev, {
-      playerName,
-      action: 'Passed',
-      time: Date.now(),
-    }]);
   };
 
   const collectCards = async () => {
@@ -633,6 +646,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       return p;
     });
 
+    const newLogEntry: PlayLogEntry = {
+      playerName: gameState.currentHand.playerName,
+      action: `Won trick! +${points} pt${points !== 1 ? 's' : ''}`,
+      time: Date.now(),
+    };
+
     const updatedState: GameState = {
       ...gameState,
       players: newPlayers,
@@ -640,17 +659,11 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       playedCards: [],
       passedPlayerIds: [],
       currentPlayerId: winnerId,
+      playLog: [...(gameState.playLog || []), newLogEntry],
     };
 
     await updateGameState(updatedState);
     setMessage(`${gameState.currentHand.playerName} won the trick and collected ${points} points!`);
-
-    // Add to play log
-    setPlayLog(prev => [...prev, {
-      playerName: gameState.currentHand!.playerName,
-      action: `Won trick! +${points} pt${points !== 1 ? 's' : ''}`,
-      time: Date.now(),
-    }]);
   };
 
   // AI-specific functions
@@ -659,6 +672,17 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     const aiPlayer = gameState.players.find(p => p.id === aiPlayerId);
     if (!aiPlayer) return;
+
+    // Check for special effects
+    if (handType === 'wushik' || handType === 'bomb') {
+      if (gameState.currentHand && (gameState.currentHand.type === 'wushik' || gameState.currentHand.type === 'bomb')) {
+        setSpecialEffect('counter');
+        setTimeout(() => setSpecialEffect(null), 2000);
+      } else {
+        setSpecialEffect(handType as 'wushik' | 'bomb');
+        setTimeout(() => setSpecialEffect(null), 1500);
+      }
+    }
 
     const newPlayers = gameState.players.map(p => {
       if (p.id === aiPlayerId) {
@@ -681,6 +705,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     const newPlayedCards = [...gameState.playedCards, ...cards];
 
+    const newLogEntry: PlayLogEntry = {
+      playerName: aiPlayer.name,
+      action: `Played ${handType}`,
+      cards: cards,
+      time: Date.now(),
+    };
+
     const updatedState: GameState = {
       ...gameState,
       players: newPlayers,
@@ -693,18 +724,11 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       playedCards: newPlayedCards,
       passedPlayerIds: [],
       currentPlayerId: getNextPlayerId(),
+      playLog: [...(gameState.playLog || []), newLogEntry],
     };
 
     await updateGameState(updatedState);
     setMessage(`${aiPlayer.name} played ${handType}!`);
-
-    // Add to play log
-    setPlayLog(prev => [...prev, {
-      playerName: aiPlayer.name,
-      action: `Played ${handType}`,
-      cards: cards,
-      time: Date.now(),
-    }]);
 
     // Check if round ended
     await checkRoundEnd(newPlayers);
@@ -717,6 +741,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     if (!aiPlayer) return;
 
     const newPassedIds = [...gameState.passedPlayerIds, aiPlayerId];
+
+    const newLogEntry: PlayLogEntry = {
+      playerName: aiPlayer.name,
+      action: 'Passed',
+      time: Date.now(),
+    };
 
     // Check if all other active players have passed
     const activePlayers = gameState.players.filter(p => !p.hasFinished);
@@ -731,18 +761,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         ...gameState,
         passedPlayerIds: newPassedIds,
         currentPlayerId: getNextPlayerId(),
+        playLog: [...(gameState.playLog || []), newLogEntry],
       };
       await updateGameState(updatedState);
     }
 
     setMessage(`${aiPlayer.name} passed.`);
-
-    // Add to play log
-    setPlayLog(prev => [...prev, {
-      playerName: aiPlayer.name,
-      action: 'Passed',
-      time: Date.now(),
-    }]);
   };
 
   const checkRoundEnd = async (players: Player[]) => {
@@ -957,6 +981,31 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       overflow: 'hidden',
       position: 'relative',
     }}>
+      {/* Play Log Toggle Button (Mobile Only) */}
+      {gameState.gameStatus === 'playing' && (
+        <button
+          onClick={() => setShowPlayLog(!showPlayLog)}
+          className="play-log-toggle"
+          style={{
+            position: 'fixed',
+            top: '80px',
+            left: '10px',
+            zIndex: 100,
+            padding: '10px 16px',
+            backgroundColor: theme.primaryColor,
+            color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          }}
+        >
+          {showPlayLog ? '✕ Close Log' : '📋 Play Log'}
+        </button>
+      )}
+
       {/* Main Grid Container */}
       <div style={{
         flex: 1,
@@ -969,7 +1018,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         margin: '0 auto',
         width: '100%',
         overflow: 'hidden',
-      }}>
+      }}
+      className="main-grid">
         {/* Top Header - spans all columns */}
         <div style={{
           gridColumn: gameState.gameStatus === 'playing' ? '1 / -1' : '1',
@@ -1050,7 +1100,9 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
         {/* Left Sidebar - Play Log (only during playing) */}
         {gameState.gameStatus === 'playing' && (
-          <div style={{
+          <div
+            className={`play-log-sidebar ${showPlayLog ? 'show' : ''}`}
+            style={{
             gridRow: '2',
             backgroundColor: theme.panelBg,
             borderRadius: '12px',
@@ -1074,7 +1126,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               gap: '8px',
               fontSize: '11px',
             }}>
-              {playLog.slice(-20).map((log, idx) => {
+              {(gameState.playLog || []).slice(-20).map((log, idx) => {
                 const playerColor = getPlayerColor(log.playerName);
                 return (
                   <div key={`${log.time}-${idx}`} style={{
@@ -1115,7 +1167,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   </div>
                 );
               })}
-              {playLog.length === 0 && (
+              {(gameState.playLog || []).length === 0 && (
                 <div style={{ textAlign: 'center', color: '#999', padding: '20px 0' }}>
                   No plays yet
                 </div>
@@ -1527,6 +1579,59 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                     border: '4px solid #c0392b',
                   }}>
                     {errorMessage}
+                  </div>
+                )}
+
+                {/* Special Effect Overlay */}
+                {specialEffect && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 999,
+                    pointerEvents: 'none',
+                  }}>
+                    {specialEffect === 'counter' ? (
+                      <div style={{
+                        fontSize: '120px',
+                        fontWeight: 'bold',
+                        animation: 'explode 2s ease-out',
+                        background: 'linear-gradient(45deg, #ff0000, #ff7700, #ffdd00, #00ff00, #0099ff, #9900ff)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                        textShadow: '0 0 30px rgba(255, 255, 255, 0.8)',
+                        filter: 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.6))',
+                      }}>
+                        💥 COUNTER! 💥
+                      </div>
+                    ) : specialEffect === 'bomb' ? (
+                      <div style={{
+                        fontSize: '100px',
+                        fontWeight: 'bold',
+                        animation: 'bombPulse 1.5s ease-out',
+                        color: '#ff4444',
+                        textShadow: '0 0 20px rgba(255, 68, 68, 0.8), 0 0 40px rgba(255, 68, 68, 0.6)',
+                        filter: 'drop-shadow(0 0 15px rgba(255, 68, 68, 0.8))',
+                      }}>
+                        💣 BOMB!
+                      </div>
+                    ) : (
+                      <div style={{
+                        fontSize: '100px',
+                        fontWeight: 'bold',
+                        animation: 'wushikShine 1.5s ease-out',
+                        background: 'linear-gradient(135deg, gold, #ffd700, #ffed4e)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                        textShadow: '0 0 20px rgba(255, 215, 0, 0.8)',
+                        filter: 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.6))',
+                      }}>
+                        ✨ WUSHIK! ✨
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -21,7 +21,7 @@ export const suitSymbols = {
 // Helper function to get card display string (e.g., "K♠" or "5♥")
 export function getCardDisplayString(card: CardType): string {
   if (card.isJoker) {
-    return card.jokerType === 'big' ? '🃏Red' : '🃏Black';
+    return card.jokerType === 'big' ? 'Red Joker' : 'Black Joker';
   }
   return `${card.rank}${suitSymbols[card.suit!]}`;
 }

@@ -91,6 +91,51 @@ body {
   }
 }
 
+@keyframes explode {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-10deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3) rotate(5deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5) rotate(10deg);
+  }
+}
+
+@keyframes bombPulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes wushikShine {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(30px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) translateY(-10px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2) translateY(-20px);
+  }
+}
+
 /* Retro panel */
 .retro-panel {
   background: #fff;
@@ -128,4 +173,63 @@ h1, h2, h3 {
 p {
   line-height: 1.6;
   font-size: 14px;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  /* Hide play log by default on mobile */
+  .play-log-sidebar {
+    display: none !important;
+  }
+
+  /* Show play log when toggled */
+  .play-log-sidebar.show {
+    display: flex !important;
+    position: fixed;
+    top: 120px;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 99;
+    max-height: calc(100vh - 130px);
+  }
+
+  /* Hide toggle button on desktop */
+  .play-log-toggle {
+    display: block !important;
+  }
+
+  /* Adjust main grid for mobile */
+  .main-grid {
+    grid-template-columns: 1fr !important;
+    padding: 5px !important;
+  }
+
+  /* Make play area smaller on mobile */
+  .play-area {
+    width: 90% !important;
+    min-width: 300px !important;
+    padding: 15px !important;
+    font-size: 14px !important;
+  }
+
+  /* Make cards smaller on mobile */
+  .hand-container {
+    max-height: 100px !important;
+    padding-top: 16px !important;
+  }
+
+  /* Stack player info vertically on mobile */
+  .hand-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+}
+
+@media (min-width: 769px) {
+  /* Hide toggle button on desktop */
+  .play-log-toggle {
+    display: none !important;
+  }
 }

@@ -41,6 +41,14 @@ export interface Player {
   firstPlaceCount?: number; // Number of times player finished first
 }
 
+// Play log entry
+export interface PlayLogEntry {
+  playerName: string;
+  action: string;
+  cards?: Card[];
+  time: number;
+}
+
 // Game state
 export interface GameState {
   id: string;
@@ -59,6 +67,7 @@ export interface GameState {
   theme?: string; // Theme name
   aiDifficulty?: 'easy' | 'medium' | 'hard'; // AI difficulty level
   turnStartTime?: number; // Timestamp when current turn started
+  playLog?: PlayLogEntry[]; // Shared play log synced across all players
 }
 
 // Game configuration
