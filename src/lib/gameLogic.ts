@@ -38,8 +38,9 @@ export function validateHand(cards: Card[]): HandType | null {
 
   // WuShiK (Five, Ten, King)
   if (cards.length === 3) {
-    const ranks = sorted.map(c => c.rank).sort();
-    if (ranks[0] === '5' && ranks[1] === '10' && ranks[2] === 'K') {
+    const ranks = sorted.map(c => c.rank);
+    const hasWuShiK = ranks.includes('5') && ranks.includes('10') && ranks.includes('K');
+    if (hasWuShiK) {
       return 'wushik';
     }
   }

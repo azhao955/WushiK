@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Card as CardType, GameState, Player, PlayedHand } from '../types/game';
-import { Card } from './Card';
+import { Card, getCardDisplayString } from './Card';
 import {
   createDeck,
   dealCards,
@@ -37,7 +37,29 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [playAreaError, setPlayAreaError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [playLog, setPlayLog] = useState<Array<{ playerName: string; action: string; time: number }>>([]);
+  const [playLog, setPlayLog] = useState<Array<{ playerName: string; action: string; cards?: CardType[]; time: number }>>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Get consistent color for each player
+  const getPlayerColor = (playerName: string): string => {
+    const colors = [
+      '#3498db', // blue
+      '#e74c3c', // red
+      '#2ecc71', // green
+      '#f39c12', // orange
+      '#9b59b6', // purple
+      '#1abc9c', // teal
+      '#e67e22', // dark orange
+      '#34495e', // dark gray
+    ];
+
+    // Simple hash function to get consistent color per player
+    let hash = 0;
+    for (let i = 0; i < playerName.length; i++) {
+      hash = playerName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
 
   // Load game from Supabase and subscribe to updates
   useEffect(() => {
@@ -319,6 +341,36 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     );
   };
 
+  // Validate selected cards and return error message if invalid
+  const getPlayError = (): string | null => {
+    if (!isMyTurn()) return "Not your turn";
+    if (selectedCards.length === 0) return "Select cards to play";
+
+    const currentPlayer = getCurrentPlayer();
+    if (!currentPlayer) return "Player not found";
+
+    const cards = selectedCards.map(id => currentPlayer.hand.find(c => c.id === id)!);
+    const handType = validateHand(cards);
+
+    if (!handType) return "Invalid hand combination";
+
+    // Check if can beat current hand
+    if (gameState?.currentHand) {
+      const newHand: PlayedHand = {
+        cards,
+        type: handType,
+        playerId,
+        playerName,
+      };
+
+      if (!canBeatHand(newHand, gameState.currentHand)) {
+        return "Cannot beat current hand";
+      }
+    }
+
+    return null;
+  };
+
   // Sorting functions
   const handleSortByRank = () => {
     const currentPlayer = getCurrentPlayer();
@@ -408,7 +460,11 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     if (!handType) {
       setPlayAreaError('Invalid hand!');
-      setTimeout(() => setPlayAreaError(null), 2000);
+      setErrorMessage('❌ Invalid hand combination!');
+      setTimeout(() => {
+        setPlayAreaError(null);
+        setErrorMessage(null);
+      }, 2500);
       return;
     }
 
@@ -423,7 +479,11 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
       if (!canBeatHand(newHand, gameState.currentHand)) {
         setPlayAreaError('Cannot beat current hand!');
-        setTimeout(() => setPlayAreaError(null), 2000);
+        setErrorMessage('❌ Your hand cannot beat the current hand!');
+        setTimeout(() => {
+          setPlayAreaError(null);
+          setErrorMessage(null);
+        }, 2500);
         return;
       }
     }
@@ -444,6 +504,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     if (!handType) {
       setMessage('Invalid hand! Please select valid cards.');
+      setErrorMessage('❌ Invalid hand combination!');
+      setTimeout(() => setErrorMessage(null), 2500);
       return;
     }
 
@@ -458,6 +520,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
       if (!canBeatHand(newHand, gameState.currentHand)) {
         setMessage('Your hand cannot beat the current hand!');
+        setErrorMessage('❌ Your hand cannot beat the current hand!');
+        setTimeout(() => setErrorMessage(null), 2500);
         return;
       }
     }
@@ -510,7 +574,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     // Add to play log
     setPlayLog(prev => [...prev, {
       playerName,
-      action: `Played ${handType} (${cards.length} card${cards.length > 1 ? 's' : ''})`,
+      action: `Played ${handType}`,
+      cards: cards,
       time: Date.now(),
     }]);
 
@@ -580,7 +645,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     // Add to play log
     setPlayLog(prev => [...prev, {
       playerName: gameState.currentHand!.playerName,
-      action: `Won trick! Collected ${points} point${points !== 1 ? 's' : ''}`,
+      action: `Won trick! +${points} pt${points !== 1 ? 's' : ''}`,
       time: Date.now(),
     }]);
   };
@@ -633,7 +698,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     // Add to play log
     setPlayLog(prev => [...prev, {
       playerName: aiPlayer.name,
-      action: `Played ${handType} (${cards.length} card${cards.length > 1 ? 's' : ''})`,
+      action: `Played ${handType}`,
+      cards: cards,
       time: Date.now(),
     }]);
 
@@ -903,35 +969,75 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         {/* Top Header - spans all columns */}
         <div style={{
           gridColumn: gameState.gameStatus === 'playing' ? '1 / -1' : '1',
-          padding: '12px 16px',
-          backgroundColor: theme.panelBg,
-          borderRadius: '12px',
-          border: `3px solid ${theme.panelBorder}`,
-          boxShadow: '0 3px 0 rgba(0, 0, 0, 0.2)',
+          padding: '16px 24px',
+          background: `linear-gradient(135deg, ${theme.primaryColor}15 0%, ${theme.secondaryColor}15 100%)`,
+          borderRadius: '16px',
+          border: `3px solid ${theme.primaryColor}40`,
+          boxShadow: `0 4px 12px ${theme.primaryColor}20`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '12px',
+          gap: '16px',
+          backdropFilter: 'blur(10px)',
         }}>
           <h1 style={{
-            color: theme.secondaryColor,
-            textShadow: '2px 2px 0 rgba(0, 0, 0, 0.2)',
+            background: `linear-gradient(135deg, ${theme.primaryColor}, ${theme.secondaryColor})`,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            textShadow: 'none',
             margin: 0,
-            fontSize: '28px',
+            fontSize: '32px',
+            fontWeight: 'bold',
+            letterSpacing: '2px',
           }}>WuShiK</h1>
-          <div style={{ display: 'flex', gap: '20px', fontSize: '13px', flexWrap: 'wrap' }}>
-            <span><strong>Game:</strong> {gameId}</span>
-            <span><strong>Round:</strong> {gameState.roundNumber}</span>
-            <span><strong>Target:</strong> {gameState.targetPoints}</span>
+          <div style={{
+            display: 'flex',
+            gap: '24px',
+            fontSize: '14px',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}>
+            <span style={{
+              padding: '6px 14px',
+              backgroundColor: theme.panelBg,
+              borderRadius: '8px',
+              border: `2px solid ${theme.panelBorder}`,
+              fontWeight: 'bold',
+            }}>
+              🎮 {gameId}
+            </span>
+            <span style={{
+              padding: '6px 14px',
+              backgroundColor: theme.primaryColor,
+              color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+            }}>
+              Round {gameState.roundNumber}
+            </span>
+            <span style={{
+              padding: '6px 14px',
+              backgroundColor: theme.secondaryColor,
+              color: '#fff',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+            }}>
+              🎯 {gameState.targetPoints}pts
+            </span>
           </div>
           {message && (
             <div style={{
               flex: '1 1 100%',
-              color: theme.primaryColor,
+              color: theme.secondaryColor,
               fontWeight: 600,
-              fontSize: '13px',
+              fontSize: '14px',
               marginTop: '4px',
+              padding: '8px 12px',
+              backgroundColor: `${theme.secondaryColor}15`,
+              borderRadius: '8px',
+              borderLeft: `4px solid ${theme.secondaryColor}`,
             }}>
               {message}
             </div>
@@ -961,24 +1067,48 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
             <div style={{
               display: 'flex',
               flexDirection: 'column-reverse',
-              gap: '6px',
+              gap: '8px',
               fontSize: '11px',
             }}>
-              {playLog.slice(-20).map((log, idx) => (
-                <div key={`${log.time}-${idx}`} style={{
-                  padding: '6px',
-                  backgroundColor: 'rgba(0,0,0,0.03)',
-                  borderRadius: '6px',
-                  borderLeft: `3px solid ${theme.primaryColor}`,
-                }}>
-                  <div style={{ fontWeight: 'bold', color: theme.primaryColor }}>
-                    {log.playerName}
+              {playLog.slice(-20).map((log, idx) => {
+                const playerColor = getPlayerColor(log.playerName);
+                return (
+                  <div key={`${log.time}-${idx}`} style={{
+                    padding: '8px',
+                    backgroundColor: 'rgba(0,0,0,0.03)',
+                    borderRadius: '8px',
+                    borderLeft: `4px solid ${playerColor}`,
+                  }}>
+                    <div style={{ fontWeight: 'bold', color: playerColor, marginBottom: '4px' }}>
+                      {log.playerName}
+                    </div>
+                    <div style={{ color: '#666', fontSize: '10px', marginBottom: '4px' }}>
+                      {log.action}
+                    </div>
+                    {log.cards && log.cards.length > 0 && (
+                      <div style={{
+                        display: 'flex',
+                        gap: '4px',
+                        flexWrap: 'wrap',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        color: '#333',
+                      }}>
+                        {log.cards.map((card, cardIdx) => (
+                          <span key={cardIdx} style={{
+                            padding: '2px 6px',
+                            backgroundColor: '#fff',
+                            borderRadius: '4px',
+                            border: '1px solid #ddd',
+                          }}>
+                            {getCardDisplayString(card)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ color: '#666', fontSize: '10px' }}>
-                    {log.action}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {playLog.length === 0 && (
                 <div style={{ textAlign: 'center', color: '#999', padding: '20px 0' }}>
                   No plays yet
@@ -1119,7 +1249,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                       borderRadius: '8px',
                     }}>
                       {lastPlayer.hand.map(card => (
-                        <Card key={card.id} card={card} />
+                        <Card key={card.id} card={card} small />
                       ))}
                     </div>
                   </div>
@@ -1338,8 +1468,31 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               <div style={{
                 position: 'relative',
                 flex: 1,
-                minHeight: '350px',
+                minHeight: '400px',
               }}>
+                {/* Error Message Overlay */}
+                {errorMessage && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 1000,
+                    backgroundColor: '#e74c3c',
+                    color: '#fff',
+                    padding: '24px 40px',
+                    borderRadius: '16px',
+                    fontSize: '20px',
+                    fontWeight: 'bold',
+                    boxShadow: '0 8px 32px rgba(231, 76, 60, 0.5)',
+                    animation: 'shake 0.5s, fadeIn 0.3s',
+                    textAlign: 'center',
+                    border: '4px solid #c0392b',
+                  }}>
+                    {errorMessage}
+                  </div>
+                )}
+
                 {/* Central Play Area */}
                 <div
                   onDragOver={handlePlayAreaDragOver}
@@ -1350,10 +1503,10 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                     top: '50%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    width: '60%',
+                    width: '55%',
                     minWidth: '400px',
-                    maxWidth: '600px',
-                    minHeight: '300px',
+                    maxWidth: '550px',
+                    minHeight: '280px',
                     padding: '30px',
                     backgroundColor: isDraggingOverPlayArea
                       ? playAreaError
@@ -1417,9 +1570,9 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   {gameState.currentHand ? (
                     <>
                       <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#666', fontWeight: 'bold' }}>
-                        Current Hand ({gameState.currentHand.type})
+                        {gameState.currentHand.type.toUpperCase()}
                       </h3>
-                      <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
                         {gameState.currentHand.cards.map(card => (
                           <Card key={card.id} card={card} />
                         ))}
@@ -1458,39 +1611,39 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   let left = '50%';
                   let transform = 'translate(-50%, -50%)';
 
-                  // Position players around the edges
+                  // Position players around the edges - further out to avoid blocking
                   if (totalPlayers === 3) {
                     if (relativeIndex === 0) {
-                      top = '10%'; left = '50%'; transform = 'translate(-50%, 0)';
+                      top = '5%'; left = '50%'; transform = 'translate(-50%, 0)';
                     } else if (relativeIndex === 1) {
-                      top = '50%'; left = '5%'; transform = 'translate(0, -50%)';
+                      top = '50%'; left = '2%'; transform = 'translate(0, -50%)';
                     } else {
-                      top = '50%'; left = '95%'; transform = 'translate(-100%, -50%)';
+                      top = '50%'; left = '98%'; transform = 'translate(-100%, -50%)';
                     }
                   } else if (totalPlayers === 4) {
                     if (relativeIndex === 0) {
-                      top = '10%'; left = '50%'; transform = 'translate(-50%, 0)';
+                      top = '5%'; left = '50%'; transform = 'translate(-50%, 0)';
                     } else if (relativeIndex === 1) {
-                      top = '50%'; left = '5%'; transform = 'translate(0, -50%)';
+                      top = '50%'; left = '2%'; transform = 'translate(0, -50%)';
                     } else if (relativeIndex === 2) {
-                      top = '90%'; left = '50%'; transform = 'translate(-50%, -100%)';
+                      top = '95%'; left = '50%'; transform = 'translate(-50%, -100%)';
                     } else {
-                      top = '50%'; left = '95%'; transform = 'translate(-100%, -50%)';
+                      top = '50%'; left = '98%'; transform = 'translate(-100%, -50%)';
                     }
                   } else if (totalPlayers === 5) {
                     const positions = [
-                      { top: '8%', left: '50%', transform: 'translate(-50%, 0)' },
-                      { top: '30%', left: '8%', transform: 'translate(0, 0)' },
-                      { top: '70%', left: '8%', transform: 'translate(0, -100%)' },
-                      { top: '70%', left: '92%', transform: 'translate(-100%, -100%)' },
-                      { top: '30%', left: '92%', transform: 'translate(-100%, 0)' },
+                      { top: '3%', left: '50%', transform: 'translate(-50%, 0)' },
+                      { top: '25%', left: '3%', transform: 'translate(0, 0)' },
+                      { top: '75%', left: '3%', transform: 'translate(0, -100%)' },
+                      { top: '75%', left: '97%', transform: 'translate(-100%, -100%)' },
+                      { top: '25%', left: '97%', transform: 'translate(-100%, 0)' },
                     ];
                     ({ top, left, transform } = positions[relativeIndex]);
                   } else {
-                    // 6+ players: circle around
+                    // 6+ players: circle around with larger radius
                     const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
-                    const radiusX = 45;
-                    const radiusY = 42;
+                    const radiusX = 48;
+                    const radiusY = 46;
                     left = `${50 + radiusX * Math.cos(angle)}%`;
                     top = `${50 + radiusY * Math.sin(angle)}%`;
                     transform = 'translate(-50%, -50%)';
@@ -1602,7 +1755,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
             padding: isMyTurnNow ? '16px' : '12px',
             borderRadius: '16px',
             border: isMyTurnNow ? `4px solid ${theme.primaryColor}` : `2px solid ${theme.panelBorder}`,
-            backgroundColor: isMyTurnNow ? `${theme.primaryColor}10` : theme.panelBg,
+            backgroundColor: `${theme.primaryColor}10`,
             transition: 'all 0.3s ease',
             position: 'relative',
           }}>
@@ -1667,9 +1820,12 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               flexWrap: 'wrap',
               gap: '5px',
               marginBottom: '12px',
-              minHeight: '100px',
-              maxHeight: '120px',
+              minHeight: '130px',
+              maxHeight: '150px',
               overflowY: 'auto',
+              overflowX: 'hidden',
+              padding: '8px',
+              paddingTop: '24px',
             }}>
               {sortedHand.map(card => (
                 <Card
@@ -1686,22 +1842,45 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <button
-                onClick={handlePlay}
-                disabled={!isMyTurnNow || selectedCards.length === 0}
-                className="pixel-button"
-                style={{
-                  backgroundColor: isMyTurnNow && selectedCards.length > 0 ? theme.secondaryColor : '#95a5a6',
-                  color: '#fff',
-                  opacity: !isMyTurnNow || selectedCards.length === 0 ? 0.5 : 1,
-                  fontSize: '16px',
-                  padding: '14px 28px',
-                  flex: 1,
-                  minWidth: '180px',
-                }}
-              >
-                🎴 Play Selected ({selectedCards.length})
-              </button>
+              {(() => {
+                const playError = getPlayError();
+                const canPlay = playError === null;
+
+                return (
+                  <button
+                    onClick={handlePlay}
+                    disabled={!canPlay}
+                    className="pixel-button"
+                    style={{
+                      backgroundColor: canPlay ? theme.secondaryColor : '#95a5a6',
+                      color: '#fff',
+                      opacity: canPlay ? 1 : 0.7,
+                      fontSize: '14px',
+                      padding: '14px 28px',
+                      flex: 1,
+                      minWidth: '180px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>
+                      🎴 Play Selected ({selectedCards.length})
+                    </span>
+                    {playError && (
+                      <span style={{
+                        fontSize: '11px',
+                        opacity: 0.9,
+                        fontWeight: 'normal',
+                        textTransform: 'none',
+                      }}>
+                        {playError}
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
 
               <button
                 onClick={handlePass}
@@ -1714,7 +1893,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   padding: '14px 28px',
                   flex: 1,
                   minWidth: '140px',
-                  opacity: !isMyTurnNow || !gameState.currentHand ? 0.5 : 1,
+                  opacity: !isMyTurnNow || !gameState.currentHand ? 0.7 : 1,
                 }}
               >
                 ⏭️ Pass
