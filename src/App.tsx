@@ -7,11 +7,26 @@ function App() {
     gameId: string;
     playerId: string;
     playerName: string;
+    config?: {
+      targetPoints: number;
+      theme: string;
+      aiPlayers: number;
+      aiDifficulty: 'easy' | 'medium' | 'hard';
+    };
   } | null>(null);
 
-  const handleJoinGame = (gameId: string, playerName: string) => {
+  const handleJoinGame = (
+    gameId: string,
+    playerName: string,
+    config?: {
+      targetPoints: number;
+      theme: string;
+      aiPlayers: number;
+      aiDifficulty: 'easy' | 'medium' | 'hard';
+    }
+  ) => {
     const playerId = `player-${Math.random().toString(36).substring(2, 9)}`;
-    setGameState({ gameId, playerId, playerName });
+    setGameState({ gameId, playerId, playerName, config });
   };
 
   const handleLeaveGame = () => {
@@ -45,6 +60,7 @@ function App() {
         gameId={gameState.gameId}
         playerId={gameState.playerId}
         playerName={gameState.playerName}
+        config={gameState.config}
       />
     </div>
   );

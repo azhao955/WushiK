@@ -37,6 +37,7 @@ export interface Player {
   totalPoints: number; // Points across all rounds
   hasFinished: boolean; // True when they've played all their cards
   finishPosition?: number; // 1st, 2nd, etc.
+  isAI?: boolean; // True if this is a computer player
 }
 
 // Game state
@@ -53,6 +54,9 @@ export interface GameState {
   gameStatus: 'waiting' | 'playing' | 'round-end' | 'game-end';
   winnerId?: string;
   firstPlayerId?: string; // Player with 3 of spades
+  theme?: string; // Theme name
+  aiDifficulty?: 'easy' | 'medium' | 'hard'; // AI difficulty level
+  turnStartTime?: number; // Timestamp when current turn started
 }
 
 // Game configuration
