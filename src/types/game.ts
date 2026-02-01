@@ -51,9 +51,10 @@ export interface GameState {
   passedPlayerIds: string[]; // Players who passed this trick
   roundNumber: number;
   targetPoints: number;
-  gameStatus: 'waiting' | 'playing' | 'round-end' | 'game-end';
+  gameStatus: 'waiting' | 'playing' | 'round-end' | 'round-reveal' | 'game-end';
   winnerId?: string;
   firstPlayerId?: string; // Player with 3 of spades
+  lastPlayerId?: string; // Last place player (for round reveal)
   theme?: string; // Theme name
   aiDifficulty?: 'easy' | 'medium' | 'hard'; // AI difficulty level
   turnStartTime?: number; // Timestamp when current turn started

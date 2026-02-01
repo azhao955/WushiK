@@ -37,6 +37,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [playAreaError, setPlayAreaError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [playLog, setPlayLog] = useState<Array<{ playerName: string; action: string; time: number }>>([]);
 
   // Load game from Supabase and subscribe to updates
   useEffect(() => {
@@ -48,13 +49,22 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     };
   }, [gameId]);
 
-  // Update sorted hand when player's hand changes, but preserve order
+  // Initialize sorted hand only once, preserve manual arrangement
   useEffect(() => {
     const currentPlayer = getCurrentPlayer();
-    if (currentPlayer) {
-      // Only update if hand size changed or sortedHand is empty
-      if (sortedHand.length === 0 || sortedHand.length !== currentPlayer.hand.length) {
-        setSortedHand(currentPlayer.hand);
+    if (currentPlayer && sortedHand.length === 0) {
+      setSortedHand(currentPlayer.hand);
+    }
+  }, [gameState?.players]);
+
+  // Update sortedHand to remove played cards while preserving order
+  useEffect(() => {
+    const currentPlayer = getCurrentPlayer();
+    if (currentPlayer && sortedHand.length > 0) {
+      const currentHandIds = new Set(currentPlayer.hand.map(c => c.id));
+      const updatedSortedHand = sortedHand.filter(c => currentHandIds.has(c.id));
+      if (updatedSortedHand.length !== sortedHand.length) {
+        setSortedHand(updatedSortedHand);
       }
     }
   }, [gameState?.players]);
@@ -497,6 +507,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     setSelectedCards([]);
     setMessage(`You played ${handType}!`);
 
+    // Add to play log
+    setPlayLog(prev => [...prev, {
+      playerName,
+      action: `Played ${handType} (${cards.length} card${cards.length > 1 ? 's' : ''})`,
+      time: Date.now(),
+    }]);
+
     // Check if round ended
     await checkRoundEnd(newPlayers);
   };
@@ -525,6 +542,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     }
 
     setMessage('You passed.');
+
+    // Add to play log
+    setPlayLog(prev => [...prev, {
+      playerName,
+      action: 'Passed',
+      time: Date.now(),
+    }]);
   };
 
   const collectCards = async () => {
@@ -552,6 +576,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     await updateGameState(updatedState);
     setMessage(`${gameState.currentHand.playerName} won the trick and collected ${points} points!`);
+
+    // Add to play log
+    setPlayLog(prev => [...prev, {
+      playerName: gameState.currentHand!.playerName,
+      action: `Won trick! Collected ${points} point${points !== 1 ? 's' : ''}`,
+      time: Date.now(),
+    }]);
   };
 
   // AI-specific functions
@@ -599,6 +630,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     await updateGameState(updatedState);
     setMessage(`${aiPlayer.name} played ${handType}!`);
 
+    // Add to play log
+    setPlayLog(prev => [...prev, {
+      playerName: aiPlayer.name,
+      action: `Played ${handType} (${cards.length} card${cards.length > 1 ? 's' : ''})`,
+      time: Date.now(),
+    }]);
+
     // Check if round ended
     await checkRoundEnd(newPlayers);
   };
@@ -629,6 +667,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     }
 
     setMessage(`${aiPlayer.name} passed.`);
+
+    // Add to play log
+    setPlayLog(prev => [...prev, {
+      playerName: aiPlayer.name,
+      action: 'Passed',
+      time: Date.now(),
+    }]);
   };
 
   const checkRoundEnd = async (players: Player[]) => {
@@ -651,6 +696,27 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       console.error('Could not find first or second place!');
       return;
     }
+
+    // Show reveal screen first (before calculating points)
+    const revealState: GameState = {
+      ...gameState,
+      players,
+      gameStatus: 'round-reveal',
+      lastPlayerId: lastPlayer.id,
+    };
+    await updateGameState(revealState);
+    setMessage(`Round ${gameState.roundNumber} complete!`);
+  };
+
+  const continueFromReveal = async () => {
+    if (!gameState || gameState.gameStatus !== 'round-reveal') return;
+
+    const players = gameState.players;
+    const lastPlayer = players.find(p => p.id === gameState.lastPlayerId);
+    const firstPlace = players.find(p => p.finishPosition === 1);
+    const secondPlace = players.find(p => p.finishPosition === 2);
+
+    if (!lastPlayer || !firstPlace || !secondPlace) return;
 
     // Calculate point redistribution
     const lastPlayerHandPoints = lastPlayer.hand.reduce((sum, card) => sum + getCardPoints(card), 0);
@@ -807,6 +873,9 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const currentPlayer = getCurrentPlayer();
   const theme = getTheme(gameState.theme || 'default');
 
+  const isMyTurnNow = isMyTurn();
+  const canStartNewHand = isMyTurnNow && !gameState?.currentHand && gameState?.gameStatus === 'playing';
+
   return (
     <div style={{
       height: '100vh',
@@ -818,18 +887,22 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       overflow: 'hidden',
       position: 'relative',
     }}>
+      {/* Main Grid Container */}
       <div style={{
         flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        maxWidth: '1400px',
+        display: 'grid',
+        gridTemplateColumns: gameState.gameStatus === 'playing' ? '200px 1fr' : '1fr',
+        gridTemplateRows: 'auto 1fr auto',
+        gap: '10px',
+        padding: '10px',
+        maxWidth: '1800px',
         margin: '0 auto',
         width: '100%',
-        padding: '12px',
-        overflow: 'auto',
-        gap: '12px',
+        overflow: 'hidden',
       }}>
+        {/* Top Header - spans all columns */}
         <div style={{
+          gridColumn: gameState.gameStatus === 'playing' ? '1 / -1' : '1',
           padding: '12px 16px',
           backgroundColor: theme.panelBg,
           borderRadius: '12px',
@@ -865,523 +938,790 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
           )}
         </div>
 
-      {gameState.gameStatus === 'waiting' && isHost && (
-        <div style={{ marginBottom: '20px' }}>
-          <button
-            onClick={startGame}
-            className="pixel-button"
-            style={{
-              backgroundColor: theme.primaryColor,
-              color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
-            }}
-          >
-            Start Game ({gameState.players.length} players joined)
-          </button>
-        </div>
-      )}
-
-      {/* Game Over Screen */}
-      {gameState.gameStatus === 'game-end' && (
-        <div style={{
-          marginBottom: '30px',
-          padding: '40px',
-          backgroundColor: theme.panelBg,
-          borderRadius: '24px',
-          border: `6px solid ${theme.primaryColor}`,
-          boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
-          textAlign: 'center',
-        }}>
-          <h2 style={{
-            fontSize: '48px',
-            color: theme.primaryColor,
-            marginBottom: '20px',
-          }}>🎉 Game Over! 🎉</h2>
-          {gameState.winnerId && (
-            <p style={{ fontSize: '24px', marginBottom: '30px' }}>
-              <strong>{gameState.players.find(p => p.id === gameState.winnerId)?.name}</strong> wins!
-            </p>
-          )}
+        {/* Left Sidebar - Play Log (only during playing) */}
+        {gameState.gameStatus === 'playing' && (
           <div style={{
-            background: 'rgba(0,0,0,0.05)',
+            gridRow: '2',
+            backgroundColor: theme.panelBg,
             borderRadius: '12px',
-            padding: '20px',
-          }}>
-            <h3 style={{ marginBottom: '15px' }}>Final Standings</h3>
-            {[...gameState.players]
-              .sort((a, b) => b.totalPoints - a.totalPoints)
-              .map((player, idx) => (
-                <div key={player.id} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '15px',
-                  marginBottom: '8px',
-                  backgroundColor: idx === 0 ? theme.primaryColor : '#fff',
-                  borderRadius: '8px',
-                  fontWeight: idx === 0 ? 'bold' : 'normal',
-                  fontSize: idx === 0 ? '18px' : '16px',
-                }}>
-                  <span>#{idx + 1} {player.name}</span>
-                  <span>{player.totalPoints} pts</span>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Round End Standings */}
-      {gameState.gameStatus === 'round-end' && (
-        <div style={{
-          marginBottom: '30px',
-          padding: '30px',
-          backgroundColor: theme.panelBg,
-          borderRadius: '24px',
-          border: `6px solid ${theme.secondaryColor}`,
-          boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
-        }}>
-          <h2 style={{
-            fontSize: '32px',
-            color: theme.secondaryColor,
-            marginBottom: '20px',
-            textAlign: 'center',
-          }}>Round {gameState.roundNumber} Complete!</h2>
-          <div style={{
-            background: 'rgba(0,0,0,0.05)',
-            borderRadius: '12px',
-            padding: '20px',
-            marginBottom: '20px',
-          }}>
-            <h3 style={{ marginBottom: '15px' }}>Current Standings</h3>
-            {[...gameState.players]
-              .sort((a, b) => b.totalPoints - a.totalPoints)
-              .map((player, idx) => (
-                <div key={player.id} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '12px',
-                  marginBottom: '6px',
-                  backgroundColor: player.id === playerId ? theme.primaryColor + '40' : '#fff',
-                  borderRadius: '8px',
-                  border: player.id === playerId ? `2px solid ${theme.primaryColor}` : 'none',
-                }}>
-                  <span><strong>#{idx + 1}</strong> {player.name} {player.id === playerId && '(You)'}</span>
-                  <span><strong>{player.totalPoints}</strong> pts</span>
-                </div>
-              ))}
-          </div>
-          {isHost && (
-            <button
-              onClick={startNextRound}
-              className="pixel-button"
-              style={{
-                width: '100%',
-                backgroundColor: theme.secondaryColor,
-                color: '#fff',
-              }}
-            >
-              Start Next Round
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Play Area - Drag cards here to play */}
-      {gameState.gameStatus === 'playing' && (
-        <div
-          onDragOver={handlePlayAreaDragOver}
-          onDragLeave={handlePlayAreaDragLeave}
-          onDrop={handlePlayAreaDrop}
-          style={{
-            marginBottom: '20px',
-            padding: '30px',
-            backgroundColor: isDraggingOverPlayArea
-              ? playAreaError
-                ? 'rgba(231, 76, 60, 0.1)'
-                : 'rgba(46, 204, 113, 0.1)'
-              : gameState.currentHand
-                ? '#fff3cd'
-                : 'rgba(149, 165, 166, 0.1)',
-            borderRadius: '16px',
-            border: isDraggingOverPlayArea
-              ? playAreaError
-                ? '4px dashed #e74c3c'
-                : '4px dashed #2ecc71'
-              : gameState.currentHand
-                ? `4px solid ${theme.panelBorder}`
-                : '4px dashed rgba(149, 165, 166, 0.3)',
-            minHeight: '180px',
+            border: `2px solid ${theme.panelBorder}`,
+            padding: '12px',
+            overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            transition: 'all 0.2s ease',
-            position: 'relative',
-          }}
-        >
-          {playAreaError && (
-            <div style={{
-              position: 'absolute',
-              top: '10px',
-              right: '10px',
-              backgroundColor: '#e74c3c',
-              color: '#fff',
-              padding: '8px 12px',
-              borderRadius: '8px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              animation: 'shake 0.5s',
-            }}>
-              {playAreaError}
-            </div>
-          )}
-
-          {gameState.currentHand ? (
-            <>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#666', fontWeight: 'bold' }}>
-                Current Hand ({gameState.currentHand.type})
-              </h3>
-              <div style={{ display: 'flex', gap: '5px', marginBottom: '12px' }}>
-                {gameState.currentHand.cards.map(card => (
-                  <Card key={card.id} card={card} />
-                ))}
-              </div>
-              <p style={{ margin: 0, fontSize: '14px', color: '#666', whiteSpace: 'nowrap', overflow: 'visible' }}>
-                Played by: <strong style={{ fontSize: '16px' }}>{gameState.currentHand.playerName}</strong>
-              </p>
-            </>
-          ) : (
-            <div style={{
+          }}>
+            <h3 style={{
+              fontSize: '14px',
+              color: theme.secondaryColor,
+              margin: '0 0 10px 0',
               textAlign: 'center',
-              color: isDraggingOverPlayArea ? '#2ecc71' : '#95a5a6',
-              fontSize: '16px',
+              borderBottom: `2px solid ${theme.panelBorder}`,
+              paddingBottom: '8px',
+            }}>Play Log</h3>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column-reverse',
+              gap: '6px',
+              fontSize: '11px',
             }}>
-              <div style={{ fontSize: '40px', marginBottom: '10px' }}>
-                {isDraggingOverPlayArea ? '✓' : '🎴'}
-              </div>
-              <div style={{ fontWeight: 600 }}>
-                {isDraggingOverPlayArea ? 'Drop cards to play!' : 'Drag cards here to play'}
+              {playLog.slice(-20).map((log, idx) => (
+                <div key={`${log.time}-${idx}`} style={{
+                  padding: '6px',
+                  backgroundColor: 'rgba(0,0,0,0.03)',
+                  borderRadius: '6px',
+                  borderLeft: `3px solid ${theme.primaryColor}`,
+                }}>
+                  <div style={{ fontWeight: 'bold', color: theme.primaryColor }}>
+                    {log.playerName}
+                  </div>
+                  <div style={{ color: '#666', fontSize: '10px' }}>
+                    {log.action}
+                  </div>
+                </div>
+              ))}
+              {playLog.length === 0 && (
+                <div style={{ textAlign: 'center', color: '#999', padding: '20px 0' }}>
+                  No plays yet
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Main Center Area */}
+        <div style={{
+          gridRow: '2',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          overflow: 'hidden',
+        }}>
+          {/* Waiting State */}
+          {gameState.gameStatus === 'waiting' && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              gap: '20px',
+            }}>
+              <div style={{
+                padding: '40px',
+                backgroundColor: theme.panelBg,
+                borderRadius: '24px',
+                border: `4px solid ${theme.panelBorder}`,
+                textAlign: 'center',
+              }}>
+                <h2 style={{ color: theme.secondaryColor, marginBottom: '20px' }}>
+                  Waiting for players...
+                </h2>
+                <div style={{ marginBottom: '20px' }}>
+                  <h3 style={{ marginBottom: '15px' }}>Players ({gameState.players.length}):</h3>
+                  {gameState.players.map(player => (
+                    <div key={player.id} style={{
+                      padding: '10px',
+                      marginBottom: '8px',
+                      backgroundColor: player.id === playerId ? `${theme.primaryColor}20` : '#fff',
+                      borderRadius: '8px',
+                      border: player.id === playerId ? `2px solid ${theme.primaryColor}` : 'none',
+                    }}>
+                      {player.name} {player.id === playerId && '(You)'}
+                    </div>
+                  ))}
+                </div>
+                {isHost && (
+                  <button
+                    onClick={startGame}
+                    className="pixel-button"
+                    disabled={gameState.players.length < 3}
+                    style={{
+                      backgroundColor: gameState.players.length >= 3 ? theme.primaryColor : '#95a5a6',
+                      color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                      opacity: gameState.players.length < 3 ? 0.5 : 1,
+                      padding: '16px 32px',
+                      fontSize: '16px',
+                    }}
+                  >
+                    {gameState.players.length >= 3
+                      ? `Start Game (${gameState.players.length} players)`
+                      : `Need ${3 - gameState.players.length} more player${3 - gameState.players.length > 1 ? 's' : ''}`
+                    }
+                  </button>
+                )}
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Around the Table Layout */}
-      {gameState.gameStatus === 'playing' && (
-        <div style={{
-          position: 'relative',
-          minHeight: '220px',
-          flex: '0 0 auto',
-        }}>
-          <h3 style={{
-            color: theme.secondaryColor,
-            marginBottom: '10px',
-            textAlign: 'center',
-            fontSize: '16px',
-            margin: '0 0 10px 0',
-          }}>Players</h3>
+          {/* Round Reveal - Show last place details */}
+          {gameState.gameStatus === 'round-reveal' && (() => {
+            const lastPlayer = gameState.players.find(p => p.id === gameState.lastPlayerId);
+            const firstPlace = gameState.players.find(p => p.finishPosition === 1);
+            const secondPlace = gameState.players.find(p => p.finishPosition === 2);
+            if (!lastPlayer || !firstPlace || !secondPlace) return null;
 
-          <div style={{ position: 'relative', height: '200px' }}>
-            {gameState.players.map((player, index) => {
-              const cardCount = player.hand.length;
-              const showCount = cardCount <= 5;
-              const totalPlayers = gameState.players.length;
+            const lastPlayerHandPoints = lastPlayer.hand.reduce((sum, card) => sum + getCardPoints(card), 0);
 
-              // Calculate position around a circle
-              // Player (you) is always at the bottom center
-              const playerIndex = gameState.players.findIndex(p => p.id === playerId);
-              const relativeIndex = (index - playerIndex + totalPlayers) % totalPlayers;
+            return (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flex: 1,
+                gap: '20px',
+              }}>
+                <div style={{
+                  padding: '30px',
+                  backgroundColor: theme.panelBg,
+                  borderRadius: '24px',
+                  border: `4px solid ${theme.secondaryColor}`,
+                  boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
+                  maxWidth: '700px',
+                  textAlign: 'center',
+                }}>
+                  <h2 style={{
+                    fontSize: '32px',
+                    color: theme.secondaryColor,
+                    marginBottom: '20px',
+                  }}>Round {gameState.roundNumber} Complete!</h2>
 
-              let top = '50%';
-              let left = '50%';
-              let transform = 'translate(-50%, -50%)';
+                  <div style={{
+                    background: 'rgba(231, 76, 60, 0.1)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    marginBottom: '20px',
+                    border: '3px solid #e74c3c',
+                  }}>
+                    <h3 style={{ marginBottom: '15px', color: '#e74c3c' }}>
+                      😰 Last Place: {lastPlayer.name}
+                    </h3>
 
-              if (totalPlayers === 3) {
-                if (relativeIndex === 0) {
-                  top = '85%'; left = '50%'; transform = 'translate(-50%, -50%)';
-                } else if (relativeIndex === 1) {
-                  top = '15%'; left = '20%'; transform = 'translate(-50%, 0)';
-                } else {
-                  top = '15%'; left = '80%'; transform = 'translate(-50%, 0)';
-                }
-              } else if (totalPlayers === 4) {
-                if (relativeIndex === 0) {
-                  top = '85%'; left = '50%'; transform = 'translate(-50%, -50%)';
-                } else if (relativeIndex === 1) {
-                  top = '50%'; left = '10%'; transform = 'translate(0, -50%)';
-                } else if (relativeIndex === 2) {
-                  top = '15%'; left = '50%'; transform = 'translate(-50%, 0)';
-                } else {
-                  top = '50%'; left = '90%'; transform = 'translate(-100%, -50%)';
-                }
-              } else if (totalPlayers === 5) {
-                const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
-                const radius = 35;
-                left = `${50 + radius * Math.cos(angle)}%`;
-                top = `${50 + radius * Math.sin(angle)}%`;
-                transform = 'translate(-50%, -50%)';
-              } else {
-                // 6+ players: full circle
-                const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
-                const radius = 38;
-                left = `${50 + radius * Math.cos(angle)}%`;
-                top = `${50 + radius * Math.sin(angle)}%`;
-                transform = 'translate(-50%, -50%)';
-              }
+                    <div style={{ marginBottom: '15px' }}>
+                      <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>
+                        <strong>Temp Points Collected:</strong> {lastPlayer.tempPoints} pts
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>
+                        <strong>Points in Hand:</strong> {lastPlayerHandPoints} pts
+                      </div>
+                      <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
+                        <strong>Remaining Cards:</strong> {lastPlayer.hand.length}
+                      </div>
+                    </div>
 
-              return (
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '4px',
+                      justifyContent: 'center',
+                      padding: '10px',
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      borderRadius: '8px',
+                    }}>
+                      {lastPlayer.hand.map(card => (
+                        <Card key={card.id} card={card} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    background: 'rgba(46, 204, 113, 0.1)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    marginBottom: '20px',
+                    border: '3px solid #2ecc71',
+                  }}>
+                    <h3 style={{ marginBottom: '15px', color: '#2ecc71' }}>
+                      📊 Point Allocation
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                      <div style={{
+                        padding: '12px',
+                        backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                        borderRadius: '8px',
+                        border: '2px solid gold',
+                      }}>
+                        <strong>🥇 1st Place ({firstPlace.name}):</strong>
+                        <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                          • Keeps their points: {firstPlace.tempPoints} pts
+                          <br />
+                          • Gets {lastPlayer.name}'s temp points: +{lastPlayer.tempPoints} pts
+                          <br />
+                          <strong style={{ color: theme.primaryColor }}>
+                            → Total gain: {firstPlace.tempPoints + lastPlayer.tempPoints} pts
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div style={{
+                        padding: '12px',
+                        backgroundColor: 'rgba(192, 192, 192, 0.2)',
+                        borderRadius: '8px',
+                        border: '2px solid silver',
+                      }}>
+                        <strong>🥈 2nd Place ({secondPlace.name}):</strong>
+                        <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                          • Keeps their points: {secondPlace.tempPoints} pts
+                          <br />
+                          • Gets {lastPlayer.name}'s hand points: +{lastPlayerHandPoints} pts
+                          <br />
+                          <strong style={{ color: theme.primaryColor }}>
+                            → Total gain: {secondPlace.tempPoints + lastPlayerHandPoints} pts
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div style={{
+                        padding: '12px',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderRadius: '8px',
+                        border: '2px solid #e74c3c',
+                      }}>
+                        <strong>📉 Last Place ({lastPlayer.name}):</strong>
+                        <div style={{ marginTop: '8px', fontSize: '14px', color: '#e74c3c' }}>
+                          • Loses everything
+                          <br />
+                          <strong>→ Total gain: 0 pts</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={continueFromReveal}
+                    className="pixel-button"
+                    style={{
+                      width: '100%',
+                      backgroundColor: theme.secondaryColor,
+                      color: '#fff',
+                      fontSize: '18px',
+                      padding: '16px',
+                    }}
+                  >
+                    Continue to Standings →
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Game Over Screen */}
+          {gameState.gameStatus === 'game-end' && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+            }}>
+              <div style={{
+                padding: '40px',
+                backgroundColor: theme.panelBg,
+                borderRadius: '24px',
+                border: `6px solid ${theme.primaryColor}`,
+                boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
+                textAlign: 'center',
+                maxWidth: '600px',
+              }}>
+                <h2 style={{
+                  fontSize: '48px',
+                  color: theme.primaryColor,
+                  marginBottom: '20px',
+                }}>🎉 Game Over! 🎉</h2>
+                {gameState.winnerId && (
+                  <p style={{ fontSize: '24px', marginBottom: '30px' }}>
+                    <strong>{gameState.players.find(p => p.id === gameState.winnerId)?.name}</strong> wins!
+                  </p>
+                )}
+                <div style={{
+                  background: 'rgba(0,0,0,0.05)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                }}>
+                  <h3 style={{ marginBottom: '15px' }}>Final Standings</h3>
+                  {[...gameState.players]
+                    .sort((a, b) => b.totalPoints - a.totalPoints)
+                    .map((player, idx) => (
+                      <div key={player.id} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '15px',
+                        marginBottom: '8px',
+                        backgroundColor: idx === 0 ? theme.primaryColor : '#fff',
+                        borderRadius: '8px',
+                        fontWeight: idx === 0 ? 'bold' : 'normal',
+                        fontSize: idx === 0 ? '18px' : '16px',
+                      }}>
+                        <span>#{idx + 1} {player.name}</span>
+                        <span>{player.totalPoints} pts</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Round End Standings */}
+          {gameState.gameStatus === 'round-end' && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+            }}>
+              <div style={{
+                padding: '30px',
+                backgroundColor: theme.panelBg,
+                borderRadius: '24px',
+                border: `6px solid ${theme.secondaryColor}`,
+                boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
+                maxWidth: '600px',
+              }}>
+                <h2 style={{
+                  fontSize: '32px',
+                  color: theme.secondaryColor,
+                  marginBottom: '20px',
+                  textAlign: 'center',
+                }}>Round {gameState.roundNumber} Complete!</h2>
+                <div style={{
+                  background: 'rgba(0,0,0,0.05)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  marginBottom: '20px',
+                }}>
+                  <h3 style={{ marginBottom: '15px' }}>Current Standings</h3>
+                  {[...gameState.players]
+                    .sort((a, b) => b.totalPoints - a.totalPoints)
+                    .map((player, idx) => (
+                      <div key={player.id} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '12px',
+                        marginBottom: '6px',
+                        backgroundColor: player.id === playerId ? theme.primaryColor + '40' : '#fff',
+                        borderRadius: '8px',
+                        border: player.id === playerId ? `2px solid ${theme.primaryColor}` : 'none',
+                      }}>
+                        <span><strong>#{idx + 1}</strong> {player.name} {player.id === playerId && '(You)'}</span>
+                        <span><strong>{player.totalPoints}</strong> pts</span>
+                      </div>
+                    ))}
+                </div>
+                {isHost && (
+                  <button
+                    onClick={startNextRound}
+                    className="pixel-button"
+                    style={{
+                      width: '100%',
+                      backgroundColor: theme.secondaryColor,
+                      color: '#fff',
+                    }}
+                  >
+                    Start Next Round
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Playing State - Table View */}
+          {gameState.gameStatus === 'playing' && (
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              minHeight: 0,
+            }}>
+              {/* Players positioned around play area */}
+              <div style={{
+                position: 'relative',
+                flex: 1,
+                minHeight: '350px',
+              }}>
+                {/* Central Play Area */}
                 <div
-                  key={player.id}
+                  onDragOver={handlePlayAreaDragOver}
+                  onDragLeave={handlePlayAreaDragLeave}
+                  onDrop={handlePlayAreaDrop}
                   style={{
                     position: 'absolute',
-                    top,
-                    left,
-                    transform,
-                    padding: '12px 16px',
-                    backgroundColor: player.id === gameState.currentPlayerId
-                      ? `${theme.primaryColor}20`
-                      : theme.panelBg,
-                    borderRadius: '12px',
-                    border: player.id === playerId
-                      ? `3px solid ${theme.primaryColor}`
-                      : `2px solid ${theme.panelBorder}`,
-                    boxShadow: player.id === gameState.currentPlayerId
-                      ? `0 0 0 3px ${theme.primaryColor}40`
-                      : '0 2px 4px rgba(0,0,0,0.1)',
-                    minWidth: '140px',
-                    maxWidth: '200px',
-                    transition: 'all 0.3s ease',
-                    zIndex: player.id === playerId ? 10 : 1,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                    <strong style={{ fontSize: '14px' }}>{player.name}</strong>
-                    {player.id === playerId && (
-                      <span style={{
-                        fontSize: '9px',
-                        padding: '2px 6px',
-                        backgroundColor: theme.primaryColor,
-                        color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
-                        borderRadius: '8px',
-                        fontWeight: 'bold',
-                      }}>YOU</span>
-                    )}
-                    {player.isAI && (
-                      <span style={{
-                        fontSize: '9px',
-                        padding: '2px 6px',
-                        backgroundColor: '#95a5a6',
-                        color: '#fff',
-                        borderRadius: '8px',
-                      }}>BOT</span>
-                    )}
-                    {player.id === gameState.currentPlayerId && (
-                      <span style={{ fontSize: '14px' }}>👈</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span>
-                      {showCount ? (
-                        <><strong>{cardCount}</strong> card{cardCount !== 1 ? 's' : ''}</>
-                      ) : (
-                        <span style={{ color: '#999' }}>🃏 {cardCount} cards</span>
-                      )}
-                    </span>
-                    {player.tempPoints > 0 && (
-                      <span style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}>
-                        {Array.from({ length: Math.min(Math.ceil(player.tempPoints / 10), 5) }).map((_, i) => (
-                          <span
-                            key={i}
-                            style={{
-                              display: 'inline-block',
-                              width: '10px',
-                              height: `${12 + i * 2}px`,
-                              background: '#fff',
-                              border: '1px solid #000',
-                              borderRadius: '2px',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                            }}
-                          />
-                        ))}
-                        {player.tempPoints >= 50 && (
-                          <span style={{ fontSize: '9px', marginLeft: '2px' }}>💎</span>
-                        )}
-                      </span>
-                    )}
-                    <span>
-                      <strong>Total:</strong> {player.totalPoints} pts
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Simplified Players List for Non-Playing States */}
-      {gameState.gameStatus !== 'playing' && (
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ color: theme.secondaryColor, marginBottom: '15px' }}>Players</h3>
-          <div style={{ display: 'grid', gap: '10px' }}>
-            {gameState.players.map(player => (
-                <div
-                  key={player.id}
-                  style={{
-                    padding: '16px',
-                    backgroundColor: theme.panelBg,
-                    borderRadius: '12px',
-                    border: player.id === playerId
-                      ? `3px solid ${theme.primaryColor}`
-                      : `2px solid ${theme.panelBorder}`,
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '60%',
+                    minWidth: '400px',
+                    maxWidth: '600px',
+                    minHeight: '300px',
+                    padding: '30px',
+                    backgroundColor: isDraggingOverPlayArea
+                      ? playAreaError
+                        ? 'rgba(231, 76, 60, 0.1)'
+                        : 'rgba(46, 204, 113, 0.1)'
+                      : gameState.currentHand
+                        ? '#fff3cd'
+                        : 'rgba(149, 165, 166, 0.1)',
+                    borderRadius: '20px',
+                    border: isDraggingOverPlayArea
+                      ? playAreaError
+                        ? '4px dashed #e74c3c'
+                        : '4px dashed #2ecc71'
+                      : gameState.currentHand
+                        ? `4px solid ${theme.panelBorder}`
+                        : '4px dashed rgba(149, 165, 166, 0.3)',
                     display: 'flex',
-                    justifyContent: 'space-between',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
                     alignItems: 'center',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <strong style={{ fontSize: '16px' }}>{player.name}</strong>
-                      {player.id === playerId && (
-                        <span style={{
-                          fontSize: '10px',
-                          padding: '2px 8px',
-                          backgroundColor: theme.primaryColor,
-                          color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
-                          borderRadius: '12px',
-                          fontWeight: 'bold',
-                        }}>YOU</span>
-                      )}
-                      {player.isAI && (
-                        <span style={{
-                          fontSize: '10px',
-                          padding: '2px 8px',
-                          backgroundColor: '#95a5a6',
-                          color: '#fff',
-                          borderRadius: '12px',
-                        }}>BOT</span>
-                      )}
+                  {playAreaError && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '10px',
+                      right: '10px',
+                      backgroundColor: '#e74c3c',
+                      color: '#fff',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      animation: 'shake 0.5s',
+                    }}>
+                      {playAreaError}
                     </div>
-                    <div style={{ fontSize: '14px', color: '#666' }}>
-                      <strong>Total:</strong> {player.totalPoints} pts
-                    </div>
-                  </div>
-                </div>
-            ))}
-          </div>
-        </div>
-      )}
+                  )}
 
-      {currentPlayer && gameState.gameStatus === 'playing' && (
-        <div style={{
-          padding: isMyTurn() ? '20px' : '10px',
-          borderRadius: '16px',
-          border: isMyTurn() ? `4px solid ${theme.primaryColor}` : 'none',
-          backgroundColor: isMyTurn() ? `${theme.primaryColor}10` : 'transparent',
-          transition: 'all 0.3s ease',
-          position: 'relative',
-        }}>
-          {isMyTurn() && (
-            <div style={{
-              position: 'absolute',
-              top: '-15px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              backgroundColor: theme.primaryColor,
-              color: '#fff',
-              padding: '8px 24px',
-              borderRadius: '20px',
-              fontWeight: 'bold',
-              fontSize: '16px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              animation: 'pulse 1.5s ease-in-out infinite',
-            }}>
-              👉 YOUR TURN 👈
+                  {canStartNewHand && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '20px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      backgroundColor: theme.primaryColor,
+                      color: '#fff',
+                      padding: '12px 24px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      animation: 'pulse 1.5s ease-in-out infinite',
+                    }}>
+                      🎴 Start New Hand! 🎴
+                    </div>
+                  )}
+
+                  {gameState.currentHand ? (
+                    <>
+                      <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#666', fontWeight: 'bold' }}>
+                        Current Hand ({gameState.currentHand.type})
+                      </h3>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {gameState.currentHand.cards.map(card => (
+                          <Card key={card.id} card={card} />
+                        ))}
+                      </div>
+                      <p style={{ margin: 0, fontSize: '16px', color: '#666' }}>
+                        Played by: <strong style={{ fontSize: '18px', color: theme.primaryColor }}>{gameState.currentHand.playerName}</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <div style={{
+                      textAlign: 'center',
+                      color: isDraggingOverPlayArea ? '#2ecc71' : '#95a5a6',
+                      fontSize: '18px',
+                    }}>
+                      <div style={{ fontSize: '64px', marginBottom: '16px' }}>
+                        {isDraggingOverPlayArea ? '✓' : '🎴'}
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: '20px' }}>
+                        {isDraggingOverPlayArea ? 'Drop cards to play!' : 'Drag cards here to play'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Players positioned around the play area */}
+                {gameState.players.map((player, index) => {
+                  const cardCount = player.hand.length;
+                  const showCount = cardCount <= 5;
+                  const totalPlayers = gameState.players.length;
+
+                  // Calculate position around the play area
+                  const playerIndex = gameState.players.findIndex(p => p.id === playerId);
+                  const relativeIndex = (index - playerIndex + totalPlayers) % totalPlayers;
+
+                  let top = '50%';
+                  let left = '50%';
+                  let transform = 'translate(-50%, -50%)';
+
+                  // Position players around the edges
+                  if (totalPlayers === 3) {
+                    if (relativeIndex === 0) {
+                      top = '10%'; left = '50%'; transform = 'translate(-50%, 0)';
+                    } else if (relativeIndex === 1) {
+                      top = '50%'; left = '5%'; transform = 'translate(0, -50%)';
+                    } else {
+                      top = '50%'; left = '95%'; transform = 'translate(-100%, -50%)';
+                    }
+                  } else if (totalPlayers === 4) {
+                    if (relativeIndex === 0) {
+                      top = '10%'; left = '50%'; transform = 'translate(-50%, 0)';
+                    } else if (relativeIndex === 1) {
+                      top = '50%'; left = '5%'; transform = 'translate(0, -50%)';
+                    } else if (relativeIndex === 2) {
+                      top = '90%'; left = '50%'; transform = 'translate(-50%, -100%)';
+                    } else {
+                      top = '50%'; left = '95%'; transform = 'translate(-100%, -50%)';
+                    }
+                  } else if (totalPlayers === 5) {
+                    const positions = [
+                      { top: '8%', left: '50%', transform: 'translate(-50%, 0)' },
+                      { top: '30%', left: '8%', transform: 'translate(0, 0)' },
+                      { top: '70%', left: '8%', transform: 'translate(0, -100%)' },
+                      { top: '70%', left: '92%', transform: 'translate(-100%, -100%)' },
+                      { top: '30%', left: '92%', transform: 'translate(-100%, 0)' },
+                    ];
+                    ({ top, left, transform } = positions[relativeIndex]);
+                  } else {
+                    // 6+ players: circle around
+                    const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
+                    const radiusX = 45;
+                    const radiusY = 42;
+                    left = `${50 + radiusX * Math.cos(angle)}%`;
+                    top = `${50 + radiusY * Math.sin(angle)}%`;
+                    transform = 'translate(-50%, -50%)';
+                  }
+
+                  return (
+                    <div
+                      key={player.id}
+                      style={{
+                        position: 'absolute',
+                        top,
+                        left,
+                        transform,
+                        padding: '10px 14px',
+                        backgroundColor: player.id === gameState.currentPlayerId
+                          ? `${theme.primaryColor}20`
+                          : theme.panelBg,
+                        borderRadius: '12px',
+                        border: player.id === playerId
+                          ? `3px solid ${theme.primaryColor}`
+                          : player.id === gameState.currentPlayerId
+                            ? `2px solid ${theme.primaryColor}`
+                            : `2px solid ${theme.panelBorder}`,
+                        boxShadow: player.id === gameState.currentPlayerId
+                          ? `0 0 0 3px ${theme.primaryColor}40`
+                          : '0 2px 6px rgba(0,0,0,0.1)',
+                        minWidth: '130px',
+                        maxWidth: '180px',
+                        transition: 'all 0.3s ease',
+                        zIndex: player.id === playerId ? 10 : 5,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: '13px' }}>{player.name}</strong>
+                        {player.id === playerId && (
+                          <span style={{
+                            fontSize: '8px',
+                            padding: '2px 5px',
+                            backgroundColor: theme.primaryColor,
+                            color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                            borderRadius: '6px',
+                            fontWeight: 'bold',
+                          }}>YOU</span>
+                        )}
+                        {player.isAI && (
+                          <span style={{
+                            fontSize: '8px',
+                            padding: '2px 5px',
+                            backgroundColor: '#95a5a6',
+                            color: '#fff',
+                            borderRadius: '6px',
+                          }}>BOT</span>
+                        )}
+                        {player.id === gameState.currentPlayerId && (
+                          <span style={{ fontSize: '13px' }}>👈</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#666', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span>
+                          {showCount ? (
+                            <><strong>{cardCount}</strong> card{cardCount !== 1 ? 's' : ''}</>
+                          ) : (
+                            <span style={{ fontSize: '18px' }}>🃏</span>
+                          )}
+                        </span>
+                        {player.tempPoints > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 'bold', color: theme.primaryColor }}>
+                              +{player.tempPoints}:
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1px' }}>
+                              {Array.from({ length: Math.min(Math.ceil(player.tempPoints / 10), 5) }).map((_, i) => (
+                                <span
+                                  key={i}
+                                  style={{
+                                    display: 'inline-block',
+                                    width: '8px',
+                                    height: `${10 + i * 2}px`,
+                                    background: 'linear-gradient(135deg, #fff 0%, #f0f0f0 100%)',
+                                    border: '1px solid #333',
+                                    borderRadius: '1px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                                  }}
+                                />
+                              ))}
+                              {player.tempPoints >= 50 && (
+                                <span style={{ fontSize: '10px', marginLeft: '2px' }}>💎</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <span style={{ fontSize: '11px' }}>
+                          <strong>Total:</strong> {player.totalPoints}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', marginTop: isMyTurn() ? '20px' : '0' }}>
-            <h3 style={{ margin: 0 }}>Your Hand</h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: '#666', fontWeight: 600 }}>Sort by:</span>
+        </div>
+
+        {/* Bottom Area - Player's Hand (spans all columns during playing) */}
+        {currentPlayer && gameState.gameStatus === 'playing' && (
+          <div style={{
+            gridColumn: '1 / -1',
+            gridRow: '3',
+            padding: isMyTurnNow ? '16px' : '12px',
+            borderRadius: '16px',
+            border: isMyTurnNow ? `4px solid ${theme.primaryColor}` : `2px solid ${theme.panelBorder}`,
+            backgroundColor: isMyTurnNow ? `${theme.primaryColor}10` : theme.panelBg,
+            transition: 'all 0.3s ease',
+            position: 'relative',
+          }}>
+            {isMyTurnNow && (
+              <div style={{
+                position: 'absolute',
+                top: '-12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: theme.primaryColor,
+                color: '#fff',
+                padding: '6px 20px',
+                borderRadius: '16px',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                animation: 'pulse 1.5s ease-in-out infinite',
+              }}>
+                👉 YOUR TURN 👈
+              </div>
+            )}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px',
+              marginTop: isMyTurnNow ? '8px' : '0',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>Your Hand ({sortedHand.length} cards)</h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#666', fontWeight: 600 }}>Sort:</span>
+                <button
+                  onClick={handleSortByRank}
+                  className="pixel-button"
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '10px',
+                    backgroundColor: theme.panelBg,
+                    color: '#666',
+                    border: `2px solid ${theme.panelBorder}`,
+                  }}
+                >
+                  Rank
+                </button>
+                <button
+                  onClick={handleSortByRecommended}
+                  className="pixel-button"
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '10px',
+                    backgroundColor: theme.primaryColor,
+                    color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                  }}
+                >
+                  Recommended
+                </button>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '5px',
+              marginBottom: '12px',
+              minHeight: '100px',
+              maxHeight: '120px',
+              overflowY: 'auto',
+            }}>
+              {sortedHand.map(card => (
+                <Card
+                  key={card.id}
+                  card={card}
+                  selected={selectedCards.includes(card.id)}
+                  onClick={() => toggleCardSelection(card.id)}
+                  draggable={true}
+                  onDragStart={handleDragStart(card.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop(card.id)}
+                />
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <button
-                onClick={handleSortByRank}
+                onClick={handlePlay}
+                disabled={!isMyTurnNow || selectedCards.length === 0}
                 className="pixel-button"
                 style={{
-                  padding: '6px 14px',
-                  fontSize: '11px',
-                  backgroundColor: theme.panelBg,
-                  color: '#666',
-                  border: `2px solid ${theme.panelBorder}`,
+                  backgroundColor: isMyTurnNow && selectedCards.length > 0 ? theme.secondaryColor : '#95a5a6',
+                  color: '#fff',
+                  opacity: !isMyTurnNow || selectedCards.length === 0 ? 0.5 : 1,
+                  fontSize: '16px',
+                  padding: '14px 28px',
+                  flex: 1,
+                  minWidth: '180px',
                 }}
               >
-                Rank
+                🎴 Play Selected ({selectedCards.length})
               </button>
+
               <button
-                onClick={handleSortByRecommended}
+                onClick={handlePass}
+                disabled={!isMyTurnNow || !gameState.currentHand}
                 className="pixel-button"
                 style={{
-                  padding: '6px 14px',
-                  fontSize: '11px',
-                  backgroundColor: theme.primaryColor,
-                  color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                  backgroundColor: isMyTurnNow && gameState.currentHand ? '#e67e22' : '#95a5a6',
+                  color: '#fff',
+                  fontSize: '16px',
+                  padding: '14px 28px',
+                  flex: 1,
+                  minWidth: '140px',
+                  opacity: !isMyTurnNow || !gameState.currentHand ? 0.5 : 1,
                 }}
               >
-                Recommended
+                ⏭️ Pass
               </button>
             </div>
           </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px', minHeight: '110px' }}>
-            {sortedHand.map(card => (
-              <Card
-                key={card.id}
-                card={card}
-                selected={selectedCards.includes(card.id)}
-                onClick={() => toggleCardSelection(card.id)}
-                draggable={true}
-                onDragStart={handleDragStart(card.id)}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop(card.id)}
-              />
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-            <button
-              onClick={handlePlay}
-              disabled={!isMyTurn() || selectedCards.length === 0}
-              className="pixel-button"
-              style={{
-                backgroundColor: isMyTurn() && selectedCards.length > 0 ? theme.secondaryColor : '#95a5a6',
-                color: '#fff',
-                opacity: !isMyTurn() || selectedCards.length === 0 ? 0.5 : 1,
-                fontSize: '18px',
-                padding: '18px 36px',
-                flex: 1,
-                minWidth: '200px',
-              }}
-            >
-              🎴 Play Selected Cards
-            </button>
-
-            <button
-              onClick={handlePass}
-              disabled={!isMyTurn() || !gameState.currentHand}
-              className="pixel-button"
-              style={{
-                backgroundColor: isMyTurn() && gameState.currentHand ? '#e67e22' : '#95a5a6',
-                color: '#fff',
-                fontSize: '18px',
-                padding: '18px 36px',
-                flex: 1,
-                minWidth: '150px',
-                opacity: !isMyTurn() || !gameState.currentHand ? 0.5 : 1,
-              }}
-            >
-              ⏭️ Pass
-            </button>
-          </div>
-        </div>
-      )}
+        )}
       </div>
 
       {/* Creator Credit */}
