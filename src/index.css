@@ -225,11 +225,47 @@ p {
     align-items: flex-start !important;
     gap: 8px !important;
   }
+
+  /* Position player profiles horizontally at top on mobile */
+  .player-profile {
+    position: static !important;
+    transform: none !important;
+    display: inline-block !important;
+    min-width: 100px !important;
+    max-width: 140px !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+    margin: 3px !important;
+  }
+
+  /* Container for mobile player profiles */
+  .players-container-mobile {
+    position: relative !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    padding: 5px !important;
+    margin-bottom: 10px !important;
+    width: 100% !important;
+  }
+
+  /* Adjust play area position to not overlap with players */
+  .play-area-container {
+    margin-top: 60px !important;
+  }
 }
 
 @media (min-width: 769px) {
   /* Hide toggle button on desktop */
   .play-log-toggle {
     display: none !important;
+  }
+
+  /* On desktop, keep player profiles positioned absolutely */
+  .players-container-mobile {
+    position: static;
+    width: auto;
+    height: auto;
   }
 }

@@ -1554,7 +1554,9 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               minHeight: 0,
             }}>
               {/* Players positioned around play area */}
-              <div style={{
+              <div
+                className="play-area-container"
+                style={{
                 position: 'relative',
                 flex: 1,
                 minHeight: '400px',
@@ -1736,6 +1738,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                 </div>
 
                 {/* Players positioned around the play area - excluding current player */}
+                <div className="players-container-mobile">
                 {gameState.players.filter(p => p.id !== playerId).map((player) => {
                   const cardCount = player.hand.length;
                   const showCount = cardCount <= 5;
@@ -1788,6 +1791,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   return (
                     <div
                       key={player.id}
+                      className="player-profile"
                       style={{
                         position: 'absolute',
                         top,
@@ -1876,6 +1880,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                     </div>
                   );
                 })}
+                </div>
               </div>
             </div>
           )}
