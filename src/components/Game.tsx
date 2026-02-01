@@ -11,6 +11,7 @@ import {
 } from '../lib/gameLogic';
 import { supabase } from '../lib/supabase';
 import { getTheme } from '../lib/themes';
+import { makeAIMove } from '../lib/aiPlayer';
 
 interface GameProps {
   gameId: string;
@@ -39,6 +40,34 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       supabase.channel(`game-${gameId}`).unsubscribe();
     };
   }, [gameId]);
+
+  // Handle AI player turns
+  useEffect(() => {
+    if (!gameState || gameState.gameStatus !== 'playing') return;
+
+    const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
+    if (!currentPlayer || !currentPlayer.isAI) return;
+
+    // AI player's turn - make a move after a short delay
+    const timer = setTimeout(async () => {
+      const aiDecision = makeAIMove(
+        currentPlayer,
+        gameState.currentHand,
+        gameState.aiDifficulty || 'medium'
+      );
+
+      if (aiDecision.action === 'play' && aiDecision.cards) {
+        const handType = validateHand(aiDecision.cards);
+        if (handType) {
+          await playHandForAI(currentPlayer.id, aiDecision.cards, handType);
+        }
+      } else {
+        await handlePassForAI(currentPlayer.id);
+      }
+    }, 1500); // 1.5 second delay to simulate thinking
+
+    return () => clearTimeout(timer);
+  }, [gameState?.currentPlayerId, gameState?.gameStatus]);
 
   const loadGame = async () => {
     const { data, error } = await supabase
@@ -265,9 +294,17 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     const newPlayers = gameState.players.map(p => {
       if (p.id === playerId) {
+        const newHand = p.hand.filter(c => !cards.some(pc => pc.id === c.id));
+        const hasFinished = newHand.length === 0;
+        const finishPosition = hasFinished
+          ? gameState.players.filter(pl => pl.hasFinished).length + 1
+          : undefined;
+
         return {
           ...p,
-          hand: p.hand.filter(c => !cards.some(pc => pc.id === c.id)),
+          hand: newHand,
+          hasFinished,
+          finishPosition,
         };
       }
       return p;
@@ -293,11 +330,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     setSelectedCards([]);
     setMessage(`You played ${handType}!`);
 
-    // Check if player finished
-    const currentPlayer = newPlayers.find(p => p.id === playerId);
-    if (currentPlayer && currentPlayer.hand.length === 0) {
-      handlePlayerFinished();
-    }
+    // Check if round ended
+    await checkRoundEnd(newPlayers);
   };
 
   const handlePass = async () => {
@@ -353,6 +387,196 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     setMessage(`${gameState.currentHand.playerName} won the trick and collected ${points} points!`);
   };
 
+  // AI-specific functions
+  const playHandForAI = async (aiPlayerId: string, cards: CardType[], handType: string) => {
+    if (!gameState) return;
+
+    const aiPlayer = gameState.players.find(p => p.id === aiPlayerId);
+    if (!aiPlayer) return;
+
+    const newPlayers = gameState.players.map(p => {
+      if (p.id === aiPlayerId) {
+        const newHand = p.hand.filter(c => !cards.some(pc => pc.id === c.id));
+        // Check if player finished
+        const hasFinished = newHand.length === 0;
+        const finishPosition = hasFinished
+          ? gameState.players.filter(pl => pl.hasFinished).length + 1
+          : undefined;
+
+        return {
+          ...p,
+          hand: newHand,
+          hasFinished,
+          finishPosition,
+        };
+      }
+      return p;
+    });
+
+    const newPlayedCards = [...gameState.playedCards, ...cards];
+
+    const updatedState: GameState = {
+      ...gameState,
+      players: newPlayers,
+      currentHand: {
+        cards,
+        type: handType as any,
+        playerId: aiPlayerId,
+        playerName: aiPlayer.name,
+      },
+      playedCards: newPlayedCards,
+      passedPlayerIds: [],
+      currentPlayerId: getNextPlayerId(),
+    };
+
+    await updateGameState(updatedState);
+    setMessage(`${aiPlayer.name} played ${handType}!`);
+
+    // Check if round ended
+    await checkRoundEnd(newPlayers);
+  };
+
+  const handlePassForAI = async (aiPlayerId: string) => {
+    if (!gameState) return;
+
+    const aiPlayer = gameState.players.find(p => p.id === aiPlayerId);
+    if (!aiPlayer) return;
+
+    const newPassedIds = [...gameState.passedPlayerIds, aiPlayerId];
+
+    // Check if all other active players have passed
+    const activePlayers = gameState.players.filter(p => !p.hasFinished);
+    const allOthersPassedOrFinished =
+      activePlayers.filter(p => p.id !== gameState.currentHand?.playerId).length ===
+      newPassedIds.length;
+
+    if (allOthersPassedOrFinished) {
+      await collectCards();
+    } else {
+      const updatedState: GameState = {
+        ...gameState,
+        passedPlayerIds: newPassedIds,
+        currentPlayerId: getNextPlayerId(),
+      };
+      await updateGameState(updatedState);
+    }
+
+    setMessage(`${aiPlayer.name} passed.`);
+  };
+
+  const checkRoundEnd = async (players: Player[]) => {
+    const playersWithCards = players.filter(p => p.hand.length > 0);
+
+    if (playersWithCards.length === 1) {
+      // Round ended! Last player remaining
+      await endRound(players, playersWithCards[0]);
+    }
+  };
+
+  const endRound = async (players: Player[], lastPlayer: Player) => {
+    if (!gameState) return;
+
+    // Get finish positions
+    const firstPlace = players.find(p => p.finishPosition === 1);
+    const secondPlace = players.find(p => p.finishPosition === 2);
+
+    if (!firstPlace || !secondPlace) {
+      console.error('Could not find first or second place!');
+      return;
+    }
+
+    // Calculate point redistribution
+    const lastPlayerHandPoints = lastPlayer.hand.reduce((sum, card) => sum + getCardPoints(card), 0);
+
+    // Update total points
+    const updatedPlayers = players.map(p => {
+      let pointsToAdd = p.tempPoints; // Keep their collected points
+
+      if (p.id === firstPlace.id) {
+        // First place gets last player's temp points
+        pointsToAdd += lastPlayer.tempPoints;
+      }
+
+      if (p.id === secondPlace.id) {
+        // Second place gets last player's hand points
+        pointsToAdd += lastPlayerHandPoints;
+      }
+
+      if (p.id === lastPlayer.id) {
+        // Last player loses everything
+        pointsToAdd = 0;
+      }
+
+      return {
+        ...p,
+        totalPoints: p.totalPoints + pointsToAdd,
+        tempPoints: 0,
+        hasFinished: false,
+        finishPosition: undefined,
+      };
+    });
+
+    // Check if anyone won the game
+    const winner = updatedPlayers.find(p => p.totalPoints >= gameState.targetPoints);
+
+    if (winner) {
+      // Game over!
+      const finalState: GameState = {
+        ...gameState,
+        players: updatedPlayers,
+        gameStatus: 'game-end',
+        winnerId: winner.id,
+      };
+      await updateGameState(finalState);
+      setMessage(`🎉 ${winner.name} wins the game with ${winner.totalPoints} points!`);
+    } else {
+      // Show round-end standings
+      const roundEndState: GameState = {
+        ...gameState,
+        players: updatedPlayers,
+        gameStatus: 'round-end',
+      };
+      await updateGameState(roundEndState);
+      setMessage(`Round ${gameState.roundNumber} complete! Check the standings.`);
+    }
+  };
+
+  const startNextRound = async () => {
+    if (!gameState) return;
+
+    const numPlayers = gameState.players.length;
+    const numDecks = Math.ceil(numPlayers / 4);
+    const deck = createDeck(numDecks);
+    const hands = dealCards(deck, numPlayers);
+
+    const firstPlayerIdx = findThreeOfSpades(hands);
+
+    const updatedPlayers = gameState.players.map((player, idx) => ({
+      ...player,
+      hand: hands[idx].sort((a, b) => {
+        if (a.isJoker && b.isJoker) return 0;
+        if (a.isJoker) return 1;
+        if (b.isJoker) return -1;
+        if (a.suit !== b.suit) return a.suit!.localeCompare(b.suit!);
+        return a.rank!.localeCompare(b.rank!);
+      }),
+    }));
+
+    const nextRoundState: GameState = {
+      ...gameState,
+      players: updatedPlayers,
+      currentPlayerId: updatedPlayers[firstPlayerIdx].id,
+      currentHand: null,
+      playedCards: [],
+      passedPlayerIds: [],
+      roundNumber: gameState.roundNumber + 1,
+      gameStatus: 'playing',
+    };
+
+    await updateGameState(nextRoundState);
+    setMessage(`Round ${nextRoundState.roundNumber} begins! ${updatedPlayers[firstPlayerIdx].name} has 3♠.`);
+  };
+
   const getNextPlayerId = (): string => {
     if (!gameState) return '';
 
@@ -361,10 +585,6 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     const nextIdx = (currentIdx + 1) % activePlayers.length;
 
     return activePlayers[nextIdx].id;
-  };
-
-  const handlePlayerFinished = () => {
-    setMessage('You finished all your cards!');
   };
 
   if (!gameState) {
@@ -421,7 +641,111 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         </div>
       )}
 
-      {gameState.currentHand && (
+      {/* Game Over Screen */}
+      {gameState.gameStatus === 'game-end' && (
+        <div style={{
+          marginBottom: '30px',
+          padding: '40px',
+          backgroundColor: theme.panelBg,
+          borderRadius: '24px',
+          border: `6px solid ${theme.primaryColor}`,
+          boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
+          textAlign: 'center',
+        }}>
+          <h2 style={{
+            fontSize: '48px',
+            color: theme.primaryColor,
+            marginBottom: '20px',
+          }}>🎉 Game Over! 🎉</h2>
+          {gameState.winnerId && (
+            <p style={{ fontSize: '24px', marginBottom: '30px' }}>
+              <strong>{gameState.players.find(p => p.id === gameState.winnerId)?.name}</strong> wins!
+            </p>
+          )}
+          <div style={{
+            background: 'rgba(0,0,0,0.05)',
+            borderRadius: '12px',
+            padding: '20px',
+          }}>
+            <h3 style={{ marginBottom: '15px' }}>Final Standings</h3>
+            {[...gameState.players]
+              .sort((a, b) => b.totalPoints - a.totalPoints)
+              .map((player, idx) => (
+                <div key={player.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '15px',
+                  marginBottom: '8px',
+                  backgroundColor: idx === 0 ? theme.primaryColor : '#fff',
+                  borderRadius: '8px',
+                  fontWeight: idx === 0 ? 'bold' : 'normal',
+                  fontSize: idx === 0 ? '18px' : '16px',
+                }}>
+                  <span>#{idx + 1} {player.name}</span>
+                  <span>{player.totalPoints} pts</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Round End Standings */}
+      {gameState.gameStatus === 'round-end' && (
+        <div style={{
+          marginBottom: '30px',
+          padding: '30px',
+          backgroundColor: theme.panelBg,
+          borderRadius: '24px',
+          border: `6px solid ${theme.secondaryColor}`,
+          boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
+        }}>
+          <h2 style={{
+            fontSize: '32px',
+            color: theme.secondaryColor,
+            marginBottom: '20px',
+            textAlign: 'center',
+          }}>Round {gameState.roundNumber} Complete!</h2>
+          <div style={{
+            background: 'rgba(0,0,0,0.05)',
+            borderRadius: '12px',
+            padding: '20px',
+            marginBottom: '20px',
+          }}>
+            <h3 style={{ marginBottom: '15px' }}>Current Standings</h3>
+            {[...gameState.players]
+              .sort((a, b) => b.totalPoints - a.totalPoints)
+              .map((player, idx) => (
+                <div key={player.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '12px',
+                  marginBottom: '6px',
+                  backgroundColor: player.id === playerId ? theme.primaryColor + '40' : '#fff',
+                  borderRadius: '8px',
+                  border: player.id === playerId ? `2px solid ${theme.primaryColor}` : 'none',
+                }}>
+                  <span><strong>#{idx + 1}</strong> {player.name} {player.id === playerId && '(You)'}</span>
+                  <span><strong>{player.totalPoints}</strong> pts</span>
+                </div>
+              ))}
+          </div>
+          {isHost && (
+            <button
+              onClick={startNextRound}
+              className="pixel-button"
+              style={{
+                width: '100%',
+                backgroundColor: theme.secondaryColor,
+                color: '#fff',
+              }}
+            >
+              Start Next Round
+            </button>
+          )}
+        </div>
+      )}
+
+      {gameState.currentHand && gameState.gameStatus === 'playing' && (
         <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff3cd', borderRadius: '8px' }}>
           <h3>Current Hand ({gameState.currentHand.type}):</h3>
           <div style={{ display: 'flex', gap: '5px' }}>
