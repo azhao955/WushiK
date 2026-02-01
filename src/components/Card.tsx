@@ -17,13 +17,6 @@ const suitSymbols = {
   spades: '♠',
 };
 
-const suitColors = {
-  clubs: '#000',
-  diamonds: '#e74c3c',
-  hearts: '#e74c3c',
-  spades: '#000',
-};
-
 export function Card({ card, selected, onClick, draggable, onDragStart, onDragOver, onDrop }: CardProps) {
   const isRed = card.suit === 'diamonds' || card.suit === 'hearts';
   const color = card.isJoker

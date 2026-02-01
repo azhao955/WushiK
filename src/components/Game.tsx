@@ -32,7 +32,6 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [isHost, setIsHost] = useState(false);
-  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [sortedHand, setSortedHand] = useState<CardType[]>([]);
   const [isDraggingOverPlayArea, setIsDraggingOverPlayArea] = useState(false);
   const [playAreaError, setPlayAreaError] = useState<string | null>(null);
@@ -289,10 +288,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const handleDragStart = (cardId: string) => (e: React.DragEvent) => {
     // If dragging a selected card, drag all selected cards
     if (selectedCards.includes(cardId)) {
-      setDraggedCardId('BUNDLE'); // Special marker for multiple cards
       e.dataTransfer.setData('cardIds', JSON.stringify(selectedCards));
     } else {
-      setDraggedCardId(cardId);
       e.dataTransfer.setData('cardIds', JSON.stringify([cardId]));
     }
     e.dataTransfer.effectAllowed = 'move';
@@ -323,7 +320,6 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     newHand.splice(targetIndex, 0, ...draggedCards);
 
     setSortedHand(newHand);
-    setDraggedCardId(null);
   };
 
   // Play area drag handlers
