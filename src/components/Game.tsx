@@ -9,6 +9,7 @@ import {
   canBeatHand,
   getCardPoints,
 } from '../lib/gameLogic';
+import { supabase } from '../lib/supabase';
 
 interface GameProps {
   gameId: string;
@@ -20,16 +21,108 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [message, setMessage] = useState('');
+  const [isHost, setIsHost] = useState(false);
 
-  // Initialize game (in a real app, this would come from Supabase)
+  // Load game from Supabase and subscribe to updates
   useEffect(() => {
-    // For now, we'll use local state
-    // TODO: Replace with Supabase real-time subscription
-    initializeLocalGame();
-  }, []);
+    loadGame();
+    subscribeToGame();
 
-  const initializeLocalGame = () => {
-    const numPlayers = 4; // Default for testing
+    return () => {
+      supabase.channel(`game-${gameId}`).unsubscribe();
+    };
+  }, [gameId]);
+
+  const loadGame = async () => {
+    const { data, error } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', gameId)
+      .single();
+
+    if (error) {
+      console.error('Error loading game:', error);
+      // Game doesn't exist, create it if we're the first player
+      await createGame();
+      return;
+    }
+
+    if (data) {
+      const state = data.state as GameState;
+
+      // Check if this player is already in the game
+      const existingPlayer = state.players.find(p => p.id === playerId);
+
+      if (!existingPlayer) {
+        // Add this player to the game
+        await joinExistingGame(state);
+      } else {
+        setGameState(state);
+      }
+    }
+  };
+
+  const createGame = async () => {
+    // Create initial game state with just this player
+    const initialState: GameState = {
+      id: gameId,
+      players: [{
+        id: playerId,
+        name: playerName,
+        hand: [],
+        tempPoints: 0,
+        totalPoints: 0,
+        hasFinished: false,
+      }],
+      currentPlayerId: playerId,
+      deck: [],
+      currentHand: null,
+      playedCards: [],
+      passedPlayerIds: [],
+      roundNumber: 1,
+      targetPoints: 100,
+      gameStatus: 'waiting',
+    };
+
+    const { error } = await supabase
+      .from('games')
+      .insert({ id: gameId, state: initialState });
+
+    if (error) {
+      console.error('Error creating game:', error);
+    } else {
+      setGameState(initialState);
+      setIsHost(true);
+      setMessage('Waiting for players to join...');
+    }
+  };
+
+  const joinExistingGame = async (state: GameState) => {
+    const newPlayer: Player = {
+      id: playerId,
+      name: playerName,
+      hand: [],
+      tempPoints: 0,
+      totalPoints: 0,
+      hasFinished: false,
+    };
+
+    const updatedState = {
+      ...state,
+      players: [...state.players, newPlayer],
+    };
+
+    await updateGameState(updatedState);
+    setMessage(`${playerName} joined the game!`);
+  };
+
+  const startGame = async () => {
+    if (!gameState || gameState.players.length < 3) {
+      setMessage('Need at least 3 players to start!');
+      return;
+    }
+
+    const numPlayers = gameState.players.length;
     const numDecks = Math.ceil(numPlayers / 4);
     const deck = createDeck(numDecks);
     const hands = dealCards(deck, numPlayers);
@@ -37,37 +130,60 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
     // Find who has 3 of spades
     const firstPlayerIdx = findThreeOfSpades(hands);
 
-    const players: Player[] = hands.map((hand, idx) => ({
-      id: `player-${idx}`,
-      name: idx === 0 ? playerName : `Player ${idx + 1}`,
-      hand: hand.sort((a, b) => {
-        // Sort by suit then rank
+    const updatedPlayers = gameState.players.map((player, idx) => ({
+      ...player,
+      hand: hands[idx].sort((a, b) => {
         if (a.isJoker && b.isJoker) return 0;
         if (a.isJoker) return 1;
         if (b.isJoker) return -1;
         if (a.suit !== b.suit) return a.suit!.localeCompare(b.suit!);
         return a.rank!.localeCompare(b.rank!);
       }),
-      tempPoints: 0,
-      totalPoints: 0,
-      hasFinished: false,
     }));
 
-    setGameState({
-      id: gameId,
-      players,
-      currentPlayerId: players[firstPlayerIdx].id,
-      deck: [],
-      currentHand: null,
-      playedCards: [],
-      passedPlayerIds: [],
-      roundNumber: 1,
-      targetPoints: 100,
+    const updatedState: GameState = {
+      ...gameState,
+      players: updatedPlayers,
+      currentPlayerId: updatedPlayers[firstPlayerIdx].id,
       gameStatus: 'playing',
-      firstPlayerId: players[firstPlayerIdx].id,
-    });
+      firstPlayerId: updatedPlayers[firstPlayerIdx].id,
+    };
 
-    setMessage(`${players[firstPlayerIdx].name} has 3♠ and starts!`);
+    await updateGameState(updatedState);
+    setMessage(`${updatedPlayers[firstPlayerIdx].name} has 3♠ and starts!`);
+  };
+
+  const subscribeToGame = () => {
+    const channel = supabase
+      .channel(`game-${gameId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'games',
+          filter: `id=eq.${gameId}`,
+        },
+        (payload) => {
+          if (payload.new && 'state' in payload.new) {
+            setGameState(payload.new.state as GameState);
+          }
+        }
+      )
+      .subscribe();
+
+    return channel;
+  };
+
+  const updateGameState = async (newState: GameState) => {
+    const { error } = await supabase
+      .from('games')
+      .update({ state: newState, updated_at: new Date().toISOString() })
+      .eq('id', gameId);
+
+    if (error) {
+      console.error('Error updating game:', error);
+    }
   };
 
   const getCurrentPlayer = (): Player | undefined => {
@@ -84,7 +200,7 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
     );
   };
 
-  const handlePlay = () => {
+  const handlePlay = async () => {
     if (!gameState || !isMyTurn()) return;
 
     const currentPlayer = getCurrentPlayer();
@@ -114,10 +230,10 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
     }
 
     // Play the hand
-    playHand(cards, handType);
+    await playHand(cards, handType);
   };
 
-  const playHand = (cards: CardType[], handType: string) => {
+  const playHand = async (cards: CardType[], handType: string) => {
     if (!gameState) return;
 
     const newPlayers = gameState.players.map(p => {
@@ -132,7 +248,7 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
 
     const newPlayedCards = [...gameState.playedCards, ...cards];
 
-    setGameState({
+    const updatedState: GameState = {
       ...gameState,
       players: newPlayers,
       currentHand: {
@@ -144,8 +260,9 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
       playedCards: newPlayedCards,
       passedPlayerIds: [],
       currentPlayerId: getNextPlayerId(),
-    });
+    };
 
+    await updateGameState(updatedState);
     setSelectedCards([]);
     setMessage(`You played ${handType}!`);
 
@@ -156,7 +273,7 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
     }
   };
 
-  const handlePass = () => {
+  const handlePass = async () => {
     if (!gameState || !isMyTurn()) return;
 
     const newPassedIds = [...gameState.passedPlayerIds, playerId];
@@ -169,19 +286,20 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
 
     if (allOthersPassedOrFinished) {
       // Winner of the trick collects cards
-      collectCards();
+      await collectCards();
     } else {
-      setGameState({
+      const updatedState: GameState = {
         ...gameState,
         passedPlayerIds: newPassedIds,
         currentPlayerId: getNextPlayerId(),
-      });
+      };
+      await updateGameState(updatedState);
     }
 
     setMessage('You passed.');
   };
 
-  const collectCards = () => {
+  const collectCards = async () => {
     if (!gameState || !gameState.currentHand) return;
 
     const winnerId = gameState.currentHand.playerId;
@@ -195,15 +313,16 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
       return p;
     });
 
-    setGameState({
+    const updatedState: GameState = {
       ...gameState,
       players: newPlayers,
       currentHand: null,
       playedCards: [],
       passedPlayerIds: [],
       currentPlayerId: winnerId,
-    });
+    };
 
+    await updateGameState(updatedState);
     setMessage(`${gameState.currentHand.playerName} won the trick and collected ${points} points!`);
   };
 
@@ -218,7 +337,6 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
   };
 
   const handlePlayerFinished = () => {
-    // Handle end-of-round scoring
     setMessage('You finished all your cards!');
   };
 
@@ -235,8 +353,29 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
       <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#ecf0f1', borderRadius: '8px' }}>
         <p><strong>Game ID:</strong> {gameId}</p>
         <p><strong>Round:</strong> {gameState.roundNumber} | <strong>Target Points:</strong> {gameState.targetPoints}</p>
+        <p><strong>Status:</strong> {gameState.gameStatus}</p>
         <p><strong>Message:</strong> {message}</p>
       </div>
+
+      {gameState.gameStatus === 'waiting' && isHost && (
+        <div style={{ marginBottom: '20px' }}>
+          <button
+            onClick={startGame}
+            style={{
+              padding: '12px 24px',
+              fontSize: '18px',
+              backgroundColor: '#27ae60',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+            }}
+          >
+            Start Game ({gameState.players.length} players joined)
+          </button>
+        </div>
+      )}
 
       {gameState.currentHand && (
         <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff3cd', borderRadius: '8px' }}>
@@ -271,7 +410,7 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
         ))}
       </div>
 
-      {currentPlayer && (
+      {currentPlayer && gameState.gameStatus === 'playing' && (
         <div>
           <h3>Your Hand:</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '15px' }}>
