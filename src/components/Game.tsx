@@ -1631,7 +1631,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                 </div>
 
                 {/* Players positioned around the play area - excluding current player */}
-                {gameState.players.filter(p => p.id !== playerId).map((player, index) => {
+                {gameState.players.filter(p => p.id !== playerId).map((player) => {
                   const cardCount = player.hand.length;
                   const showCount = cardCount <= 5;
                   const totalPlayers = gameState.players.length;
