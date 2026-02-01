@@ -2122,7 +2122,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               justifyContent: 'space-between',
               alignItems: 'center',
               marginBottom: '12px',
-              marginTop: isMyTurnNow ? '8px' : '0',
+              marginTop: isMyTurnNow ? '52px' : '0',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '16px' }}>Your Hand ({sortedHand.length} cards)</h3>
