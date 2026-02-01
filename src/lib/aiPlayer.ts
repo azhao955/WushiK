@@ -65,10 +65,9 @@ function findBeatingHand(
   difficulty: Difficulty
 ): Card[] | null {
   const handType = currentHand.type;
-  const handSize = currentHand.cards.length;
 
   // Find all possible plays of the same type
-  const possiblePlays = findHandsOfType(player.hand, handType, handSize);
+  const possiblePlays = findHandsOfType(player.hand, handType);
 
   // Filter to only those that beat current hand
   const beatingPlays = possiblePlays.filter(cards => {
@@ -147,7 +146,7 @@ function shouldAIPlay(
   return true;
 }
 
-function findHandsOfType(hand: Card[], type: HandType, size: number): Card[][] {
+function findHandsOfType(hand: Card[], type: HandType): Card[][] {
   const results: Card[][] = [];
 
   if (type === 'single') {

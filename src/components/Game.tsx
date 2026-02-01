@@ -1119,11 +1119,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ color: theme.secondaryColor, marginBottom: '15px' }}>Players</h3>
           <div style={{ display: 'grid', gap: '10px' }}>
-            {gameState.players.map(player => {
-              const cardCount = player.hand.length;
-              const showCount = cardCount < 5;
-
-              return (
+            {gameState.players.map(player => (
                 <div
                   key={player.id}
                   style={{
@@ -1166,8 +1162,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                     </div>
                   </div>
                 </div>
-              );
-            })}
+            ))}
           </div>
         </div>
       )}

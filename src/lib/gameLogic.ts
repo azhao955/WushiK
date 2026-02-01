@@ -1,4 +1,4 @@
-import type { Card, HandType, PlayedHand, Suit } from '../types/game';
+import type { Card, HandType, PlayedHand, Suit, Rank } from '../types/game';
 
 // Card ranking order (lowest to highest)
 const RANK_ORDER = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
