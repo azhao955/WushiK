@@ -10,14 +10,21 @@ import {
   getCardPoints,
 } from '../lib/gameLogic';
 import { supabase } from '../lib/supabase';
+import { getTheme } from '../lib/themes';
 
 interface GameProps {
   gameId: string;
   playerId: string;
   playerName: string;
+  config?: {
+    targetPoints: number;
+    theme: string;
+    aiPlayers: number;
+    aiDifficulty: 'easy' | 'medium' | 'hard';
+  };
 }
 
-export function Game({ gameId, playerId, playerName }: GameProps) {
+export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [message, setMessage] = useState('');
@@ -63,25 +70,44 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
   };
 
   const createGame = async () => {
-    // Create initial game state with just this player
-    const initialState: GameState = {
-      id: gameId,
-      players: [{
-        id: playerId,
-        name: playerName,
+    // Create initial players list with host
+    const initialPlayers: Player[] = [{
+      id: playerId,
+      name: playerName,
+      hand: [],
+      tempPoints: 0,
+      totalPoints: 0,
+      hasFinished: false,
+      isAI: false,
+    }];
+
+    // Add AI players if configured
+    const numAI = config?.aiPlayers || 0;
+    for (let i = 0; i < numAI; i++) {
+      initialPlayers.push({
+        id: `ai-${i}`,
+        name: `Bot ${i + 1}`,
         hand: [],
         tempPoints: 0,
         totalPoints: 0,
         hasFinished: false,
-      }],
+        isAI: true,
+      });
+    }
+
+    const initialState: GameState = {
+      id: gameId,
+      players: initialPlayers,
       currentPlayerId: playerId,
       deck: [],
       currentHand: null,
       playedCards: [],
       passedPlayerIds: [],
       roundNumber: 1,
-      targetPoints: 100,
+      targetPoints: config?.targetPoints || 100,
       gameStatus: 'waiting',
+      theme: config?.theme || 'default',
+      aiDifficulty: config?.aiDifficulty || 'medium',
     };
 
     const { error } = await supabase
@@ -93,7 +119,8 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
     } else {
       setGameState(initialState);
       setIsHost(true);
-      setMessage('Waiting for players to join...');
+      const totalPlayers = initialPlayers.length;
+      setMessage(`${totalPlayers} player${totalPlayers > 1 ? 's' : ''} in lobby. Need ${Math.max(0, 3 - totalPlayers)} more to start!`);
     }
   };
 
@@ -345,31 +372,48 @@ export function Game({ gameId, playerId, playerName }: GameProps) {
   }
 
   const currentPlayer = getCurrentPlayer();
+  const theme = getTheme(gameState.theme || 'default');
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>WuShiK Card Game</h1>
+    <div style={{
+      minHeight: '100vh',
+      background: theme.background,
+      padding: '20px',
+      fontFamily: 'Poppins, sans-serif',
+      transition: 'background 0.5s ease',
+    }}>
+      <div style={{
+        maxWidth: '1400px',
+        margin: '0 auto',
+      }}>
+        <h1 style={{
+          color: theme.secondaryColor,
+          textShadow: '3px 3px 0 rgba(0, 0, 0, 0.2)',
+          marginBottom: '20px',
+        }}>WuShiK</h1>
 
-      <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#ecf0f1', borderRadius: '8px' }}>
-        <p><strong>Game ID:</strong> {gameId}</p>
-        <p><strong>Round:</strong> {gameState.roundNumber} | <strong>Target Points:</strong> {gameState.targetPoints}</p>
-        <p><strong>Status:</strong> {gameState.gameStatus}</p>
-        <p><strong>Message:</strong> {message}</p>
-      </div>
+        <div style={{
+          marginBottom: '20px',
+          padding: '20px',
+          backgroundColor: theme.panelBg,
+          borderRadius: '16px',
+          border: `3px solid ${theme.panelBorder}`,
+          boxShadow: '0 4px 0 rgba(0, 0, 0, 0.2)',
+        }}>
+          <p><strong>Game ID:</strong> {gameId}</p>
+          <p><strong>Round:</strong> {gameState.roundNumber} | <strong>Target Points:</strong> {gameState.targetPoints}</p>
+          <p><strong>Status:</strong> {gameState.gameStatus}</p>
+          <p style={{ color: theme.primaryColor, fontWeight: 600 }}><strong>Message:</strong> {message}</p>
+        </div>
 
       {gameState.gameStatus === 'waiting' && isHost && (
         <div style={{ marginBottom: '20px' }}>
           <button
             onClick={startGame}
+            className="pixel-button"
             style={{
-              padding: '12px 24px',
-              fontSize: '18px',
-              backgroundColor: '#27ae60',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
+              backgroundColor: theme.primaryColor,
+              color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
             }}
           >
             Start Game ({gameState.players.length} players joined)
