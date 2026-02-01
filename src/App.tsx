@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Lobby } from './components/Lobby';
-import { Game } from './components/Game';
+
+// Lazy load the Game component to reduce initial bundle size
+const Game = lazy(() => import('./components/Game').then(module => ({ default: module.Game })));
 
 function App() {
   const [gameState, setGameState] = useState<{
@@ -56,12 +58,36 @@ function App() {
       >
         Leave Game
       </button>
-      <Game
-        gameId={gameState.gameId}
-        playerId={gameState.playerId}
-        playerName={gameState.playerName}
-        config={gameState.config}
-      />
+      <Suspense fallback={
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: '#fff',
+          fontFamily: 'Poppins, sans-serif',
+        }}>
+          <div style={{
+            fontSize: '48px',
+            marginBottom: '20px',
+            animation: 'pulse 1.5s ease-in-out infinite',
+          }}>
+            🎴
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+            Loading game...
+          </div>
+        </div>
+      }>
+        <Game
+          gameId={gameState.gameId}
+          playerId={gameState.playerId}
+          playerName={gameState.playerName}
+          config={gameState.config}
+        />
+      </Suspense>
     </div>
   );
 }
