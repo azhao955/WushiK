@@ -503,6 +503,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
