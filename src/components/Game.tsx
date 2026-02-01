@@ -42,6 +42,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [showPlayLog, setShowPlayLog] = useState(false); // For mobile toggle
   const [sweepingCards, setSweepingCards] = useState(false);
   const [collectingPoints, setCollectingPoints] = useState<number | null>(null);
+  const [slidingIn, setSlidingIn] = useState(false);
+  const [previousHand, setPreviousHand] = useState<PlayedHand | null>(null);
 
   // Get consistent color for each player
   const getPlayerColor = (playerName: string): string => {
@@ -141,6 +143,26 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     return () => clearTimeout(timer);
   }, [gameState?.currentPlayerId, gameState?.gameStatus]);
+
+  // Trigger slide-in animation when new cards are played
+  useEffect(() => {
+    if (gameState?.currentHand && gameState.currentHand !== previousHand) {
+      // Store previous hand for stacked effect
+      if (previousHand) {
+        // New cards played on top of existing
+        setSlidingIn(true);
+        setTimeout(() => setSlidingIn(false), 600);
+      } else {
+        // First cards on empty table
+        setSlidingIn(true);
+        setTimeout(() => setSlidingIn(false), 600);
+      }
+      setPreviousHand(gameState.currentHand);
+    } else if (!gameState?.currentHand && previousHand) {
+      // Cards cleared
+      setPreviousHand(null);
+    }
+  }, [gameState?.currentHand]);
 
   const loadGame = async () => {
     try {
@@ -1785,16 +1807,55 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                         {gameState.currentHand.type.toUpperCase()}
                       </h3>
                       <div style={{
-                        display: 'flex',
-                        gap: '8px',
+                        position: 'relative',
                         marginBottom: '16px',
-                        flexWrap: 'wrap',
-                        justifyContent: 'center',
-                        animation: sweepingCards ? 'sweepOff 0.8s ease-in forwards' : 'none',
+                        minHeight: '100px',
                       }}>
-                        {gameState.currentHand.cards.map(card => (
-                          <Card key={card.id} card={card} />
-                        ))}
+                        {/* Previous cards shown underneath with offset */}
+                        {previousHand && previousHand !== gameState.currentHand && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '-8px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            display: 'flex',
+                            gap: '8px',
+                            opacity: 0.4,
+                            filter: 'brightness(0.8)',
+                            pointerEvents: 'none',
+                          }}>
+                            {previousHand.cards.map(card => (
+                              <div key={card.id} style={{ transform: 'rotate(-2deg) scale(0.95)' }}>
+                                <Card card={card} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Current cards with slide-in animation */}
+                        <div style={{
+                          position: 'relative',
+                          display: 'flex',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                          justifyContent: 'center',
+                          animation: sweepingCards
+                            ? 'sweepOff 0.8s ease-in forwards'
+                            : slidingIn
+                              ? 'slideIn 0.6s ease-out'
+                              : 'none',
+                        }}>
+                          {gameState.currentHand.cards.map((card, index) => (
+                            <div
+                              key={card.id}
+                              style={{
+                                transform: `rotate(${(index - (gameState.currentHand?.cards.length || 0) / 2) * 2}deg)`,
+                              }}
+                            >
+                              <Card card={card} />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <p style={{ margin: 0, fontSize: '16px', color: '#666' }}>
                         Played by: <strong style={{ fontSize: '18px', color: theme.primaryColor }}>{gameState.currentHand.playerName}</strong>
