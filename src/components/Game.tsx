@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Card as CardType, GameState, Player, PlayedHand } from '../types/game';
-import { Card, getCardDisplayString } from './Card';
+import { Card, getCardDisplayString, isRedSuit } from './Card';
 import {
   createDeck,
   dealCards,
@@ -191,6 +191,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       totalPoints: 0,
       hasFinished: false,
       isAI: false,
+      firstPlaceCount: 0,
     }];
 
     // Add AI players if configured
@@ -204,6 +205,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         totalPoints: 0,
         hasFinished: false,
         isAI: true,
+        firstPlaceCount: 0,
       });
     }
 
@@ -246,6 +248,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       tempPoints: 0,
       totalPoints: 0,
       hasFinished: false,
+      firstPlaceCount: 0,
     };
 
     const updatedState = {
@@ -787,7 +790,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     // Calculate point redistribution
     const lastPlayerHandPoints = lastPlayer.hand.reduce((sum, card) => sum + getCardPoints(card), 0);
 
-    // Update total points
+    // Update total points and first place count
     const updatedPlayers = players.map(p => {
       let pointsToAdd = p.tempPoints; // Keep their collected points
 
@@ -812,6 +815,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         tempPoints: 0,
         hasFinished: false,
         finishPosition: undefined,
+        firstPlaceCount: p.id === firstPlace.id ? (p.firstPlaceCount || 0) + 1 : (p.firstPlaceCount || 0),
       };
     });
 
@@ -1100,6 +1104,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                             backgroundColor: '#fff',
                             borderRadius: '4px',
                             border: '1px solid #ddd',
+                            color: isRedSuit(card) ? '#e74c3c' : '#000',
+                            fontWeight: 'bold',
                           }}>
                             {getCardDisplayString(card)}
                           </span>
@@ -1500,35 +1506,31 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   onDrop={handlePlayAreaDrop}
                   style={{
                     position: 'absolute',
-                    top: '50%',
+                    top: '45%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    width: '55%',
-                    minWidth: '400px',
-                    maxWidth: '550px',
-                    minHeight: '280px',
+                    width: '70%',
+                    minWidth: '500px',
+                    maxWidth: '800px',
+                    minHeight: '220px',
                     padding: '30px',
                     backgroundColor: isDraggingOverPlayArea
                       ? playAreaError
-                        ? 'rgba(231, 76, 60, 0.1)'
-                        : 'rgba(46, 204, 113, 0.1)'
-                      : gameState.currentHand
-                        ? '#fff3cd'
-                        : 'rgba(149, 165, 166, 0.1)',
+                        ? 'rgba(231, 76, 60, 0.15)'
+                        : 'rgba(46, 204, 113, 0.15)'
+                      : 'rgba(255, 255, 255, 0.95)',
                     borderRadius: '20px',
                     border: isDraggingOverPlayArea
                       ? playAreaError
                         ? '4px dashed #e74c3c'
                         : '4px dashed #2ecc71'
-                      : gameState.currentHand
-                        ? `4px solid ${theme.panelBorder}`
-                        : '4px dashed rgba(149, 165, 166, 0.3)',
+                      : `3px solid ${theme.panelBorder}`,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    transition: 'background-color 0.2s ease, border 0.2s ease',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                   }}
                 >
                   {playAreaError && (
@@ -1597,55 +1599,53 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   )}
                 </div>
 
-                {/* Players positioned around the play area */}
-                {gameState.players.map((player, index) => {
+                {/* Players positioned around the play area - excluding current player */}
+                {gameState.players.filter(p => p.id !== playerId).map((player, index) => {
                   const cardCount = player.hand.length;
                   const showCount = cardCount <= 5;
                   const totalPlayers = gameState.players.length;
+                  const otherPlayers = gameState.players.filter(p => p.id !== playerId);
 
                   // Calculate position around the play area
-                  const playerIndex = gameState.players.findIndex(p => p.id === playerId);
-                  const relativeIndex = (index - playerIndex + totalPlayers) % totalPlayers;
+                  const relativeIndex = otherPlayers.findIndex(p => p.id === player.id);
 
                   let top = '50%';
                   let left = '50%';
                   let transform = 'translate(-50%, -50%)';
 
-                  // Position players around the edges - further out to avoid blocking
+                  // Position other players (excluding current player)
                   if (totalPlayers === 3) {
+                    // 2 other players
                     if (relativeIndex === 0) {
-                      top = '5%'; left = '50%'; transform = 'translate(-50%, 0)';
-                    } else if (relativeIndex === 1) {
-                      top = '50%'; left = '2%'; transform = 'translate(0, -50%)';
+                      top = '20%'; left = '15%'; transform = 'translate(0, 0)';
                     } else {
-                      top = '50%'; left = '98%'; transform = 'translate(-100%, -50%)';
+                      top = '20%'; left = '85%'; transform = 'translate(-100%, 0)';
                     }
                   } else if (totalPlayers === 4) {
+                    // 3 other players
                     if (relativeIndex === 0) {
-                      top = '5%'; left = '50%'; transform = 'translate(-50%, 0)';
+                      top = '15%'; left = '50%'; transform = 'translate(-50%, 0)';
                     } else if (relativeIndex === 1) {
-                      top = '50%'; left = '2%'; transform = 'translate(0, -50%)';
-                    } else if (relativeIndex === 2) {
-                      top = '95%'; left = '50%'; transform = 'translate(-50%, -100%)';
+                      top = '40%'; left = '8%'; transform = 'translate(0, -50%)';
                     } else {
-                      top = '50%'; left = '98%'; transform = 'translate(-100%, -50%)';
+                      top = '40%'; left = '92%'; transform = 'translate(-100%, -50%)';
                     }
                   } else if (totalPlayers === 5) {
+                    // 4 other players
                     const positions = [
-                      { top: '3%', left: '50%', transform: 'translate(-50%, 0)' },
-                      { top: '25%', left: '3%', transform: 'translate(0, 0)' },
-                      { top: '75%', left: '3%', transform: 'translate(0, -100%)' },
-                      { top: '75%', left: '97%', transform: 'translate(-100%, -100%)' },
-                      { top: '25%', left: '97%', transform: 'translate(-100%, 0)' },
+                      { top: '10%', left: '50%', transform: 'translate(-50%, 0)' },
+                      { top: '35%', left: '5%', transform: 'translate(0, 0)' },
+                      { top: '35%', left: '95%', transform: 'translate(-100%, 0)' },
+                      { top: '10%', left: '20%', transform: 'translate(0, 0)' },
                     ];
-                    ({ top, left, transform } = positions[relativeIndex]);
+                    ({ top, left, transform } = positions[relativeIndex] || positions[0]);
                   } else {
-                    // 6+ players: circle around with larger radius
-                    const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
-                    const radiusX = 48;
-                    const radiusY = 46;
+                    // 6+ players: circle around top half
+                    const angle = (relativeIndex * Math.PI) / (otherPlayers.length - 1) - Math.PI;
+                    const radiusX = 45;
+                    const radiusY = 35;
                     left = `${50 + radiusX * Math.cos(angle)}%`;
-                    top = `${50 + radiusY * Math.sin(angle)}%`;
+                    top = `${30 + radiusY * Math.sin(angle)}%`;
                     transform = 'translate(-50%, -50%)';
                   }
 
@@ -1662,18 +1662,16 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                           ? `${theme.primaryColor}20`
                           : theme.panelBg,
                         borderRadius: '12px',
-                        border: player.id === playerId
-                          ? `3px solid ${theme.primaryColor}`
-                          : player.id === gameState.currentPlayerId
-                            ? `2px solid ${theme.primaryColor}`
-                            : `2px solid ${theme.panelBorder}`,
+                        border: player.id === gameState.currentPlayerId
+                          ? `2px solid ${theme.primaryColor}`
+                          : `2px solid ${theme.panelBorder}`,
                         boxShadow: player.id === gameState.currentPlayerId
                           ? `0 0 0 3px ${theme.primaryColor}40`
                           : '0 2px 6px rgba(0,0,0,0.1)',
                         minWidth: '130px',
                         maxWidth: '180px',
                         transition: 'all 0.3s ease',
-                        zIndex: player.id === playerId ? 10 : 5,
+                        zIndex: 5,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', flexWrap: 'wrap' }}>
@@ -1784,7 +1782,33 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               marginBottom: '12px',
               marginTop: isMyTurnNow ? '8px' : '0',
             }}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Your Hand ({sortedHand.length} cards)</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '16px' }}>Your Hand ({sortedHand.length} cards)</h3>
+                {currentPlayer && (
+                  <div style={{ display: 'flex', gap: '12px', fontSize: '13px' }}>
+                    {currentPlayer.tempPoints > 0 && (
+                      <span style={{
+                        padding: '4px 10px',
+                        backgroundColor: theme.secondaryColor,
+                        color: '#fff',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                      }}>
+                        +{currentPlayer.tempPoints} pts
+                      </span>
+                    )}
+                    <span style={{
+                      padding: '4px 10px',
+                      backgroundColor: theme.primaryColor,
+                      color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                      borderRadius: '8px',
+                      fontWeight: 'bold',
+                    }}>
+                      Total: {currentPlayer.totalPoints} pts
+                    </span>
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: '#666', fontWeight: 600 }}>Sort:</span>
                 <button

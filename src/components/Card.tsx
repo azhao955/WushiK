@@ -26,6 +26,11 @@ export function getCardDisplayString(card: CardType): string {
   return `${card.rank}${suitSymbols[card.suit!]}`;
 }
 
+// Helper to check if suit is red
+export function isRedSuit(card: CardType): boolean {
+  return card.suit === 'hearts' || card.suit === 'diamonds';
+}
+
 export function Card({ card, selected, onClick, draggable, onDragStart, onDragOver, onDrop, small }: CardProps) {
   // Get card code for Deck of Cards API
   const getCardCode = () => {

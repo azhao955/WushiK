@@ -38,6 +38,7 @@ export interface Player {
   hasFinished: boolean; // True when they've played all their cards
   finishPosition?: number; // 1st, 2nd, etc.
   isAI?: boolean; // True if this is a computer player
+  firstPlaceCount?: number; // Number of times player finished first
 }
 
 // Game state
