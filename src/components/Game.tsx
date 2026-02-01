@@ -1836,7 +1836,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                           {isCurrentTurn && '👉 '}
                           {player.name}
                           {isYou && ' (You)'}
-                          {' '}({cardCount})
+                          {cardCount < 5 ? ` (${cardCount})` : ' 🎴'}
                         </span>
                       </span>
                     );

@@ -1,8 +1,10 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, lazy, Suspense, useEffect } from 'react';
 import { Lobby } from './components/Lobby';
 
 // Lazy load the Game component to reduce initial bundle size
 const Game = lazy(() => import('./components/Game').then(module => ({ default: module.Game })));
+
+const SESSION_KEY = 'wushik-game-session';
 
 function App() {
   const [gameState, setGameState] = useState<{
@@ -17,6 +19,20 @@ function App() {
     };
   } | null>(null);
 
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    const savedSession = localStorage.getItem(SESSION_KEY);
+    if (savedSession) {
+      try {
+        const session = JSON.parse(savedSession);
+        setGameState(session);
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+        localStorage.removeItem(SESSION_KEY);
+      }
+    }
+  }, []);
+
   const handleJoinGame = (
     gameId: string,
     playerName: string,
@@ -28,10 +44,16 @@ function App() {
     }
   ) => {
     const playerId = `player-${Math.random().toString(36).substring(2, 9)}`;
-    setGameState({ gameId, playerId, playerName, config });
+    const session = { gameId, playerId, playerName, config };
+
+    // Save to localStorage
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    setGameState(session);
   };
 
   const handleLeaveGame = () => {
+    // Clear localStorage
+    localStorage.removeItem(SESSION_KEY);
     setGameState(null);
   };
 

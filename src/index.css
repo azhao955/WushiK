@@ -259,11 +259,39 @@ p {
     justify-content: center !important;
   }
 
-  /* Make cards much smaller on mobile and fix at bottom */
+  /* Make cards display in single row like holding in hand on mobile */
   .hand-container {
-    max-height: 85px !important;
     padding-top: 8px !important;
     flex: 0 0 auto !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  /* Card hand display - single row with overlap */
+  .hand-container > div:last-child {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 0 !important;
+    padding: 0 10px !important;
+    overflow-x: auto !important;
+  }
+
+  /* Individual cards in hand - smaller and overlapping */
+  .hand-container > div:last-child > div {
+    flex-shrink: 0 !important;
+    margin-right: -25px !important;
+    transition: transform 0.2s, margin 0.2s !important;
+  }
+
+  .hand-container > div:last-child > div:last-child {
+    margin-right: 0 !important;
+  }
+
+  /* Selected cards pop up */
+  .hand-container > div:last-child > div.selected {
+    transform: translateY(-15px) !important;
+    margin-left: 8px !important;
+    margin-right: -17px !important;
   }
 
   /* Stack player info vertically on mobile */
@@ -303,6 +331,58 @@ p {
   .player-separator {
     color: #999;
     margin: 0 4px;
+  }
+}
+
+/* Landscape/Horizontal mode specific */
+@media (max-width: 768px) and (orientation: landscape) {
+  /* Switch to horizontal layout in landscape */
+  .main-grid {
+    flex-direction: row !important;
+    height: 100vh !important;
+  }
+
+  /* Play area takes more space in landscape */
+  .play-area-container {
+    flex: 1 1 60% !important;
+    min-height: auto !important;
+    max-height: none !important;
+    height: 100% !important;
+  }
+
+  .play-area {
+    width: 90% !important;
+    max-width: none !important;
+    height: 80% !important;
+    max-height: none !important;
+    min-height: auto !important;
+  }
+
+  /* Hand takes right side in landscape */
+  .hand-container {
+    flex: 1 1 40% !important;
+    max-height: none !important;
+    height: 100vh !important;
+    overflow-y: auto !important;
+    padding: 10px !important;
+  }
+
+  /* Player list more compact in landscape */
+  .players-container-mobile {
+    position: absolute !important;
+    top: 5px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 4px 12px !important;
+    font-size: 11px !important;
+    z-index: 10 !important;
+  }
+
+  /* Cards smaller in landscape */
+  .hand-container > div:last-child > div {
+    margin-right: -30px !important;
   }
 }
 
