@@ -19,7 +19,7 @@ export function Lobby({ onJoinGame }: LobbyProps) {
   const [gameId, setGameId] = useState('');
   const [targetPoints, setTargetPoints] = useState(100);
   const [theme, setTheme] = useState('default');
-  const [aiPlayers, setAiPlayers] = useState(0);
+  const [aiPlayers, setAiPlayers] = useState<number | ''>(0);
   const [aiDifficulty, setAiDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   const currentTheme = getTheme(theme);
@@ -31,7 +31,8 @@ export function Lobby({ onJoinGame }: LobbyProps) {
     }
 
     const newGameId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    onJoinGame(newGameId, playerName, { targetPoints, theme, aiPlayers, aiDifficulty });
+    const aiCount = typeof aiPlayers === 'number' ? aiPlayers : 0;
+    onJoinGame(newGameId, playerName, { targetPoints, theme, aiPlayers: aiCount, aiDifficulty });
   };
 
   const handleJoinGame = () => {
@@ -253,7 +254,19 @@ export function Lobby({ onJoinGame }: LobbyProps) {
               <input
                 type="number"
                 value={aiPlayers}
-                onChange={e => setAiPlayers(Math.max(0, Math.min(6, parseInt(e.target.value) || 0)))}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setAiPlayers('');
+                  } else {
+                    setAiPlayers(Math.max(0, Math.min(6, parseInt(val) || 0)));
+                  }
+                }}
+                onBlur={e => {
+                  if (e.target.value === '') {
+                    setAiPlayers(0);
+                  }
+                }}
                 min="0"
                 max="6"
                 placeholder="Count"

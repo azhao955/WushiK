@@ -28,8 +28,8 @@ export function validateHand(cards: Card[]): HandType | null {
   // Single
   if (cards.length === 1) return 'single';
 
-  // Double
-  if (cards.length === 2 && sorted[0].rank === sorted[1].rank) return 'double';
+  // Pair
+  if (cards.length === 2 && sorted[0].rank === sorted[1].rank) return 'pair';
 
   // Triple
   if (cards.length === 3 && sorted[0].rank === sorted[1].rank && sorted[1].rank === sorted[2].rank) {

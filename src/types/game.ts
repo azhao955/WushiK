@@ -14,7 +14,7 @@ export interface Card {
 // Hand types that can be played
 export type HandType =
   | 'single'
-  | 'double'
+  | 'pair'
   | 'triple'
   | 'straight'
   | 'triple-double'

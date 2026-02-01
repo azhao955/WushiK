@@ -40,6 +40,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [specialEffect, setSpecialEffect] = useState<'wushik' | 'bomb' | 'counter' | null>(null);
   const [showPlayLog, setShowPlayLog] = useState(false); // For mobile toggle
+  const [sweepingCards, setSweepingCards] = useState(false);
+  const [collectingPoints, setCollectingPoints] = useState<number | null>(null);
 
   // Get consistent color for each player
   const getPlayerColor = (playerName: string): string => {
@@ -260,6 +262,30 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     await updateGameState(updatedState);
     setMessage(`${playerName} joined the game!`);
+  };
+
+  const addBot = async () => {
+    if (!gameState) return;
+
+    const botCount = gameState.players.filter(p => p.isAI).length;
+    const newBot: Player = {
+      id: `ai-${Date.now()}`,
+      name: `Bot ${botCount + 1}`,
+      hand: [],
+      tempPoints: 0,
+      totalPoints: 0,
+      hasFinished: false,
+      isAI: true,
+      firstPlaceCount: 0,
+    };
+
+    const updatedState = {
+      ...gameState,
+      players: [...gameState.players, newBot],
+    };
+
+    await updateGameState(updatedState);
+    setMessage(`Bot ${botCount + 1} joined the game!`);
   };
 
   const startGame = async () => {
@@ -571,7 +597,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     const newLogEntry: PlayLogEntry = {
       playerName,
-      action: `Played ${handType}`,
+      action: 'Played',
       cards: cards,
       time: Date.now(),
     };
@@ -639,31 +665,46 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     const pointCards = gameState.playedCards.filter(c => getCardPoints(c) > 0);
     const points = pointCards.reduce((sum, c) => sum + getCardPoints(c), 0);
 
-    const newPlayers = gameState.players.map(p => {
-      if (p.id === winnerId) {
-        return { ...p, tempPoints: p.tempPoints + points };
+    // Start sweep animation
+    setSweepingCards(true);
+
+    // After sweep, show point collection
+    setTimeout(() => {
+      setSweepingCards(false);
+      if (points > 0) {
+        setCollectingPoints(points);
+        setTimeout(() => setCollectingPoints(null), 1500);
       }
-      return p;
-    });
+    }, 800);
 
-    const newLogEntry: PlayLogEntry = {
-      playerName: gameState.currentHand.playerName,
-      action: `Won trick! +${points} pt${points !== 1 ? 's' : ''}`,
-      time: Date.now(),
-    };
+    // Update state after animations
+    setTimeout(async () => {
+      const newPlayers = gameState.players.map(p => {
+        if (p.id === winnerId) {
+          return { ...p, tempPoints: p.tempPoints + points };
+        }
+        return p;
+      });
 
-    const updatedState: GameState = {
-      ...gameState,
-      players: newPlayers,
-      currentHand: null,
-      playedCards: [],
-      passedPlayerIds: [],
-      currentPlayerId: winnerId,
-      playLog: [...(gameState.playLog || []), newLogEntry],
-    };
+      const newLogEntry: PlayLogEntry = {
+        playerName: gameState.currentHand!.playerName,
+        action: `Won hand! +${points} pt${points !== 1 ? 's' : ''}`,
+        time: Date.now(),
+      };
 
-    await updateGameState(updatedState);
-    setMessage(`${gameState.currentHand.playerName} won the trick and collected ${points} points!`);
+      const updatedState: GameState = {
+        ...gameState,
+        players: newPlayers,
+        currentHand: null,
+        playedCards: [],
+        passedPlayerIds: [],
+        currentPlayerId: winnerId,
+        playLog: [...(gameState.playLog || []), newLogEntry],
+      };
+
+      await updateGameState(updatedState);
+      setMessage(`${gameState.currentHand!.playerName} won the hand and collected ${points} points!`);
+    }, 1000);
   };
 
   // AI-specific functions
@@ -707,7 +748,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     const newLogEntry: PlayLogEntry = {
       playerName: aiPlayer.name,
-      action: `Played ${handType}`,
+      action: 'Played',
       cards: cards,
       time: Date.now(),
     };
@@ -1219,23 +1260,37 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   ))}
                 </div>
                 {isHost && (
-                  <button
-                    onClick={startGame}
-                    className="pixel-button"
-                    disabled={gameState.players.length < 3}
-                    style={{
-                      backgroundColor: gameState.players.length >= 3 ? theme.primaryColor : '#95a5a6',
-                      color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
-                      opacity: gameState.players.length < 3 ? 0.5 : 1,
-                      padding: '16px 32px',
-                      fontSize: '16px',
-                    }}
-                  >
-                    {gameState.players.length >= 3
-                      ? `Start Game (${gameState.players.length} players)`
-                      : `Need ${3 - gameState.players.length} more player${3 - gameState.players.length > 1 ? 's' : ''}`
-                    }
-                  </button>
+                  <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
+                    <button
+                      onClick={addBot}
+                      className="pixel-button"
+                      style={{
+                        backgroundColor: theme.secondaryColor,
+                        color: '#fff',
+                        padding: '12px 24px',
+                        fontSize: '14px',
+                      }}
+                    >
+                      🤖 Add Bot
+                    </button>
+                    <button
+                      onClick={startGame}
+                      className="pixel-button"
+                      disabled={gameState.players.length < 3}
+                      style={{
+                        backgroundColor: gameState.players.length >= 3 ? theme.primaryColor : '#95a5a6',
+                        color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                        opacity: gameState.players.length < 3 ? 0.5 : 1,
+                        padding: '16px 32px',
+                        fontSize: '16px',
+                      }}
+                    >
+                      {gameState.players.length >= 3
+                        ? `Start Game (${gameState.players.length} players)`
+                        : `Need ${3 - gameState.players.length} more player${3 - gameState.players.length > 1 ? 's' : ''}`
+                      }
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1707,12 +1762,36 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                     </div>
                   )}
 
+                  {collectingPoints !== null && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      fontSize: '48px',
+                      fontWeight: 'bold',
+                      color: theme.secondaryColor,
+                      animation: 'collectPoints 1.5s ease-out',
+                      zIndex: 100,
+                      pointerEvents: 'none',
+                    }}>
+                      +{collectingPoints} pts! 💰
+                    </div>
+                  )}
+
                   {gameState.currentHand ? (
                     <>
                       <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#666', fontWeight: 'bold' }}>
                         {gameState.currentHand.type.toUpperCase()}
                       </h3>
-                      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <div style={{
+                        display: 'flex',
+                        gap: '8px',
+                        marginBottom: '16px',
+                        flexWrap: 'wrap',
+                        justifyContent: 'center',
+                        animation: sweepingCards ? 'sweepOff 0.8s ease-in forwards' : 'none',
+                      }}>
                         {gameState.currentHand.cards.map(card => (
                           <Card key={card.id} card={card} />
                         ))}
@@ -1752,39 +1831,39 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   let left = '50%';
                   let transform = 'translate(-50%, -50%)';
 
-                  // Position other players (excluding current player)
+                  // Position other players (excluding current player) - desktop positioning
                   if (totalPlayers === 3) {
-                    // 2 other players
+                    // 2 other players - positioned at top corners
                     if (relativeIndex === 0) {
-                      top = '20%'; left = '15%'; transform = 'translate(0, 0)';
+                      top = '8%'; left = '12%'; transform = 'translate(0, 0)';
                     } else {
-                      top = '20%'; left = '85%'; transform = 'translate(-100%, 0)';
+                      top = '8%'; left = '88%'; transform = 'translate(-100%, 0)';
                     }
                   } else if (totalPlayers === 4) {
-                    // 3 other players
+                    // 3 other players - top center and sides
                     if (relativeIndex === 0) {
-                      top = '15%'; left = '50%'; transform = 'translate(-50%, 0)';
+                      top = '5%'; left = '50%'; transform = 'translate(-50%, 0)';
                     } else if (relativeIndex === 1) {
-                      top = '40%'; left = '8%'; transform = 'translate(0, -50%)';
+                      top = '35%'; left = '3%'; transform = 'translate(0, -50%)';
                     } else {
-                      top = '40%'; left = '92%'; transform = 'translate(-100%, -50%)';
+                      top = '35%'; left = '97%'; transform = 'translate(-100%, -50%)';
                     }
                   } else if (totalPlayers === 5) {
                     // 4 other players
                     const positions = [
-                      { top: '10%', left: '50%', transform: 'translate(-50%, 0)' },
-                      { top: '35%', left: '5%', transform: 'translate(0, 0)' },
-                      { top: '35%', left: '95%', transform: 'translate(-100%, 0)' },
-                      { top: '10%', left: '20%', transform: 'translate(0, 0)' },
+                      { top: '5%', left: '50%', transform: 'translate(-50%, 0)' },
+                      { top: '30%', left: '3%', transform: 'translate(0, 0)' },
+                      { top: '30%', left: '97%', transform: 'translate(-100%, 0)' },
+                      { top: '5%', left: '18%', transform: 'translate(0, 0)' },
                     ];
                     ({ top, left, transform } = positions[relativeIndex] || positions[0]);
                   } else {
                     // 6+ players: circle around top half
                     const angle = (relativeIndex * Math.PI) / (otherPlayers.length - 1) - Math.PI;
-                    const radiusX = 45;
-                    const radiusY = 35;
+                    const radiusX = 47;
+                    const radiusY = 38;
                     left = `${50 + radiusX * Math.cos(angle)}%`;
-                    top = `${30 + radiusY * Math.sin(angle)}%`;
+                    top = `${28 + radiusY * Math.sin(angle)}%`;
                     transform = 'translate(-50%, -50%)';
                   }
 

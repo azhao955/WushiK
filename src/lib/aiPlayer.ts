@@ -153,7 +153,7 @@ function findHandsOfType(hand: Card[], type: HandType): Card[][] {
     return hand.map(c => [c]);
   }
 
-  if (type === 'double') {
+  if (type === 'pair') {
     const ranks = new Map<string, Card[]>();
     hand.forEach(card => {
       if (!card.isJoker) {
