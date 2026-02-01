@@ -1206,118 +1206,133 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                 justifyContent: 'center',
                 flex: 1,
                 gap: '20px',
+                padding: '20px',
               }}>
                 <div style={{
-                  padding: '30px',
+                  padding: '24px',
                   backgroundColor: theme.panelBg,
-                  borderRadius: '24px',
+                  borderRadius: '20px',
                   border: `4px solid ${theme.secondaryColor}`,
                   boxShadow: '0 8px 0 rgba(0, 0, 0, 0.3)',
-                  maxWidth: '700px',
-                  textAlign: 'center',
+                  maxWidth: '1200px',
+                  width: '100%',
                 }}>
                   <h2 style={{
-                    fontSize: '32px',
+                    fontSize: '28px',
                     color: theme.secondaryColor,
-                    marginBottom: '20px',
+                    marginBottom: '24px',
+                    textAlign: 'center',
                   }}>Round {gameState.roundNumber} Complete!</h2>
 
                   <div style={{
-                    background: 'rgba(231, 76, 60, 0.1)',
-                    borderRadius: '12px',
-                    padding: '20px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 2fr',
+                    gap: '20px',
                     marginBottom: '20px',
-                    border: '3px solid #e74c3c',
                   }}>
-                    <h3 style={{ marginBottom: '15px', color: '#e74c3c' }}>
-                      😰 Last Place: {lastPlayer.name}
-                    </h3>
-
-                    <div style={{ marginBottom: '15px' }}>
-                      <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>
-                        <strong>Temp Points Collected:</strong> {lastPlayer.tempPoints} pts
-                      </div>
-                      <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>
-                        <strong>Points in Hand:</strong> {lastPlayerHandPoints} pts
-                      </div>
-                      <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
-                        <strong>Remaining Cards:</strong> {lastPlayer.hand.length}
-                      </div>
-                    </div>
-
+                    {/* Left: Last Place */}
                     <div style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: '4px',
-                      justifyContent: 'center',
-                      padding: '10px',
-                      backgroundColor: 'rgba(0,0,0,0.05)',
-                      borderRadius: '8px',
+                      background: 'rgba(231, 76, 60, 0.1)',
+                      borderRadius: '12px',
+                      padding: '16px',
+                      border: '3px solid #e74c3c',
                     }}>
-                      {lastPlayer.hand.map(card => (
-                        <Card key={card.id} card={card} small />
-                      ))}
+                      <h3 style={{ marginBottom: '12px', color: '#e74c3c', fontSize: '18px' }}>
+                        😰 Last Place
+                      </h3>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '12px' }}>
+                        {lastPlayer.name}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                        Temp: {lastPlayer.tempPoints} pts | Hand: {lastPlayerHandPoints} pts
+                      </div>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '12px' }}>
+                        {lastPlayer.hand.length} cards left
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '3px',
+                        justifyContent: 'center',
+                        padding: '8px',
+                        backgroundColor: 'rgba(0,0,0,0.05)',
+                        borderRadius: '6px',
+                        maxHeight: '120px',
+                        overflowY: 'auto',
+                      }}>
+                        {lastPlayer.hand.map(card => (
+                          <Card key={card.id} card={card} small />
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div style={{
-                    background: 'rgba(46, 204, 113, 0.1)',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    marginBottom: '20px',
-                    border: '3px solid #2ecc71',
-                  }}>
-                    <h3 style={{ marginBottom: '15px', color: '#2ecc71' }}>
-                      📊 Point Allocation
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-                      <div style={{
-                        padding: '12px',
-                        backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                        borderRadius: '8px',
-                        border: '2px solid gold',
-                      }}>
-                        <strong>🥇 1st Place ({firstPlace.name}):</strong>
-                        <div style={{ marginTop: '8px', fontSize: '14px' }}>
-                          • Keeps their points: {firstPlace.tempPoints} pts
-                          <br />
-                          • Gets {lastPlayer.name}'s temp points: +{lastPlayer.tempPoints} pts
-                          <br />
-                          <strong style={{ color: theme.primaryColor }}>
-                            → Total gain: {firstPlace.tempPoints + lastPlayer.tempPoints} pts
-                          </strong>
+                    {/* Right: Point Allocation */}
+                    <div style={{
+                      background: 'rgba(46, 204, 113, 0.1)',
+                      borderRadius: '12px',
+                      padding: '16px',
+                      border: '3px solid #2ecc71',
+                    }}>
+                      <h3 style={{ marginBottom: '16px', color: '#2ecc71', fontSize: '18px' }}>
+                        📊 Point Distribution
+                      </h3>
+                      <div style={{ display: 'flex', gap: '12px' }}>
+                        <div style={{
+                          flex: 1,
+                          padding: '12px',
+                          backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                          borderRadius: '8px',
+                          border: '2px solid gold',
+                        }}>
+                          <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
+                            🥇 {firstPlace.name}
+                          </div>
+                          <div style={{ fontSize: '13px' }}>
+                            Keeps: {firstPlace.tempPoints} pts
+                            <br />
+                            +Last temp: {lastPlayer.tempPoints} pts
+                          </div>
+                          <div style={{ marginTop: '8px', fontSize: '16px', fontWeight: 'bold', color: theme.primaryColor }}>
+                            → {firstPlace.tempPoints + lastPlayer.tempPoints} pts
+                          </div>
                         </div>
-                      </div>
 
-                      <div style={{
-                        padding: '12px',
-                        backgroundColor: 'rgba(192, 192, 192, 0.2)',
-                        borderRadius: '8px',
-                        border: '2px solid silver',
-                      }}>
-                        <strong>🥈 2nd Place ({secondPlace.name}):</strong>
-                        <div style={{ marginTop: '8px', fontSize: '14px' }}>
-                          • Keeps their points: {secondPlace.tempPoints} pts
-                          <br />
-                          • Gets {lastPlayer.name}'s hand points: +{lastPlayerHandPoints} pts
-                          <br />
-                          <strong style={{ color: theme.primaryColor }}>
-                            → Total gain: {secondPlace.tempPoints + lastPlayerHandPoints} pts
-                          </strong>
+                        <div style={{
+                          flex: 1,
+                          padding: '12px',
+                          backgroundColor: 'rgba(192, 192, 192, 0.2)',
+                          borderRadius: '8px',
+                          border: '2px solid silver',
+                        }}>
+                          <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
+                            🥈 {secondPlace.name}
+                          </div>
+                          <div style={{ fontSize: '13px' }}>
+                            Keeps: {secondPlace.tempPoints} pts
+                            <br />
+                            +Last hand: {lastPlayerHandPoints} pts
+                          </div>
+                          <div style={{ marginTop: '8px', fontSize: '16px', fontWeight: 'bold', color: theme.primaryColor }}>
+                            → {secondPlace.tempPoints + lastPlayerHandPoints} pts
+                          </div>
                         </div>
-                      </div>
 
-                      <div style={{
-                        padding: '12px',
-                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                        borderRadius: '8px',
-                        border: '2px solid #e74c3c',
-                      }}>
-                        <strong>📉 Last Place ({lastPlayer.name}):</strong>
-                        <div style={{ marginTop: '8px', fontSize: '14px', color: '#e74c3c' }}>
-                          • Loses everything
-                          <br />
-                          <strong>→ Total gain: 0 pts</strong>
+                        <div style={{
+                          flex: 1,
+                          padding: '12px',
+                          backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                          borderRadius: '8px',
+                          border: '2px solid #e74c3c',
+                        }}>
+                          <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
+                            📉 {lastPlayer.name}
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#e74c3c' }}>
+                            Loses everything
+                          </div>
+                          <div style={{ marginTop: '8px', fontSize: '16px', fontWeight: 'bold', color: '#e74c3c' }}>
+                            → 0 pts
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1381,6 +1396,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                       <div key={player.id} style={{
                         display: 'flex',
                         justifyContent: 'space-between',
+                        alignItems: 'center',
                         padding: '15px',
                         marginBottom: '8px',
                         backgroundColor: idx === 0 ? theme.primaryColor : '#fff',
@@ -1389,7 +1405,14 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                         fontSize: idx === 0 ? '18px' : '16px',
                       }}>
                         <span>#{idx + 1} {player.name}</span>
-                        <span>{player.totalPoints} pts</span>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          {(player.firstPlaceCount || 0) > 0 && (
+                            <span style={{ fontSize: '14px', opacity: 0.8 }}>
+                              🥇×{player.firstPlaceCount}
+                            </span>
+                          )}
+                          <span>{player.totalPoints} pts</span>
+                        </div>
                       </div>
                     ))}
                 </div>
@@ -1433,6 +1456,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                       <div key={player.id} style={{
                         display: 'flex',
                         justifyContent: 'space-between',
+                        alignItems: 'center',
                         padding: '12px',
                         marginBottom: '6px',
                         backgroundColor: player.id === playerId ? theme.primaryColor + '40' : '#fff',
@@ -1440,7 +1464,14 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                         border: player.id === playerId ? `2px solid ${theme.primaryColor}` : 'none',
                       }}>
                         <span><strong>#{idx + 1}</strong> {player.name} {player.id === playerId && '(You)'}</span>
-                        <span><strong>{player.totalPoints}</strong> pts</span>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                          {(player.firstPlaceCount || 0) > 0 && (
+                            <span style={{ fontSize: '12px', opacity: 0.8 }}>
+                              🥇×{player.firstPlaceCount}
+                            </span>
+                          )}
+                          <span><strong>{player.totalPoints}</strong> pts</span>
+                        </div>
                       </div>
                     ))}
                 </div>
