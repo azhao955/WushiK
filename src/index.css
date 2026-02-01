@@ -274,31 +274,35 @@ p {
     padding: 8px !important;
   }
 
-  /* Position player profiles horizontally at top on mobile - compact */
-  .player-profile {
-    position: static !important;
-    transform: none !important;
-    display: inline-block !important;
-    min-width: 90px !important;
-    max-width: 120px !important;
-    padding: 4px 8px !important;
-    font-size: 10px !important;
-    margin: 2px !important;
+  /* Hide desktop player profile boxes on mobile */
+  .players-container-desktop {
+    display: none !important;
   }
 
-  /* Container for mobile player profiles - fixed at top */
+  /* Mobile minimal text player list */
   .players-container-mobile {
-    position: relative !important;
     display: flex !important;
     flex-wrap: wrap !important;
     justify-content: center !important;
-    gap: 4px !important;
-    padding: 5px !important;
-    margin-bottom: 5px !important;
+    align-items: center !important;
+    padding: 8px 10px !important;
+    margin-bottom: 8px !important;
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    text-align: center !important;
     width: 100% !important;
-    flex: 0 0 auto !important;
-    max-height: 80px !important;
-    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  .player-text-item {
+    white-space: nowrap;
+  }
+
+  .player-separator {
+    color: #999;
+    margin: 0 4px;
   }
 }
 
@@ -308,10 +312,13 @@ p {
     display: none !important;
   }
 
-  /* On desktop, keep player profiles positioned absolutely */
+  /* Hide mobile text list on desktop */
   .players-container-mobile {
-    position: static;
-    width: auto;
-    height: auto;
+    display: none !important;
+  }
+
+  /* Show desktop player profile boxes */
+  .players-container-desktop {
+    display: block !important;
   }
 }

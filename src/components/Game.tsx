@@ -1816,8 +1816,35 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   )}
                 </div>
 
-                {/* Players positioned around the play area - excluding current player */}
+                {/* Minimal text-based player list for mobile, positioned boxes for desktop */}
                 <div className="players-container-mobile">
+                  {gameState.players.map((player, index) => {
+                    const cardCount = player.hand.length;
+                    const isCurrentTurn = player.id === gameState.currentPlayerId;
+                    const isYou = player.id === playerId;
+
+                    return (
+                      <span key={player.id}>
+                        {index > 0 && <span className="player-separator"> • </span>}
+                        <span
+                          className="player-text-item"
+                          style={{
+                            fontWeight: isCurrentTurn ? 'bold' : 'normal',
+                            color: isCurrentTurn ? theme.primaryColor : '#333',
+                          }}
+                        >
+                          {isCurrentTurn && '👉 '}
+                          {player.name}
+                          {isYou && ' (You)'}
+                          {' '}({cardCount})
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop player profiles - positioned around play area */}
+                <div className="players-container-desktop">
                 {gameState.players.filter(p => p.id !== playerId).map((player) => {
                   const cardCount = player.hand.length;
                   const showCount = cardCount <= 5;
