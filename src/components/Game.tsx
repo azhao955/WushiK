@@ -35,6 +35,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [sortedHand, setSortedHand] = useState<CardType[]>([]);
   const [isDraggingOverPlayArea, setIsDraggingOverPlayArea] = useState(false);
   const [playAreaError, setPlayAreaError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load game from Supabase and subscribe to updates
   useEffect(() => {
@@ -83,31 +85,44 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   }, [gameState?.currentPlayerId, gameState?.gameStatus]);
 
   const loadGame = async () => {
-    const { data, error } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', gameId)
-      .single();
+    try {
+      setLoading(true);
+      setLoadError(null);
 
-    if (error) {
-      console.error('Error loading game:', error);
-      // Game doesn't exist, create it if we're the first player
-      await createGame();
-      return;
-    }
+      const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', gameId)
+        .single();
 
-    if (data) {
-      const state = data.state as GameState;
-
-      // Check if this player is already in the game
-      const existingPlayer = state.players.find(p => p.id === playerId);
-
-      if (!existingPlayer) {
-        // Add this player to the game
-        await joinExistingGame(state);
-      } else {
-        setGameState(state);
+      if (error) {
+        // Game doesn't exist, create it if we're the first player
+        if (error.code === 'PGRST116') {
+          await createGame();
+        } else {
+          throw new Error(`Failed to load game: ${error.message}`);
+        }
+        return;
       }
+
+      if (data) {
+        const state = data.state as GameState;
+
+        // Check if this player is already in the game
+        const existingPlayer = state.players.find(p => p.id === playerId);
+
+        if (!existingPlayer) {
+          // Add this player to the game
+          await joinExistingGame(state);
+        } else {
+          setGameState(state);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading game:', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to connect to game server');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -158,12 +173,14 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
     if (error) {
       console.error('Error creating game:', error);
+      setLoadError(`Failed to create game: ${error.message}`);
     } else {
       setGameState(initialState);
       setIsHost(true);
       const totalPlayers = initialPlayers.length;
       setMessage(`${totalPlayers} player${totalPlayers > 1 ? 's' : ''} in lobby. Need ${Math.max(0, 3 - totalPlayers)} more to start!`);
     }
+    setLoading(false);
   };
 
   const joinExistingGame = async (state: GameState) => {
@@ -714,8 +731,54 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     return activePlayers[nextIdx].id;
   };
 
-  if (!gameState) {
-    return <div style={{ padding: '20px' }}>Loading game...</div>;
+  if (loadError) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: '#fff',
+        fontFamily: 'Poppins, sans-serif',
+        padding: '20px',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
+        <h2 style={{ marginBottom: '10px' }}>Connection Error</h2>
+        <p style={{ marginBottom: '20px', maxWidth: '500px' }}>{loadError}</p>
+        <p style={{ fontSize: '12px', opacity: 0.8 }}>
+          Check that environment variables are set correctly in Vercel.
+        </p>
+      </div>
+    );
+  }
+
+  if (loading || !gameState) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: '#fff',
+        fontFamily: 'Poppins, sans-serif',
+      }}>
+        <div style={{
+          fontSize: '48px',
+          marginBottom: '20px',
+          animation: 'pulse 1.5s ease-in-out infinite',
+        }}>
+          🎴
+        </div>
+        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+          Connecting to game...
+        </div>
+      </div>
+    );
   }
 
   const currentPlayer = getCurrentPlayer();
