@@ -139,30 +139,42 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       } else {
         await handlePassForAI(currentPlayer.id);
       }
-    }, 1500); // 1.5 second delay to simulate thinking
+    }, 2000); // 2 second delay so players can see what happened
 
     return () => clearTimeout(timer);
   }, [gameState?.currentPlayerId, gameState?.gameStatus]);
 
   // Trigger slide-in animation when new cards are played
   useEffect(() => {
-    if (gameState?.currentHand && gameState.currentHand !== previousHand) {
-      // Store previous hand for stacked effect
-      if (previousHand) {
-        // New cards played on top of existing
-        setSlidingIn(true);
-        setTimeout(() => setSlidingIn(false), 600);
-      } else {
-        // First cards on empty table
-        setSlidingIn(true);
-        setTimeout(() => setSlidingIn(false), 600);
-      }
-      setPreviousHand(gameState.currentHand);
-    } else if (!gameState?.currentHand && previousHand) {
+    if (!gameState) return;
+
+    const currentHand = gameState.currentHand;
+
+    // Check if it's a different hand by comparing player IDs and card count
+    const isDifferentHand = currentHand && previousHand &&
+      (currentHand.playerId !== previousHand.playerId ||
+       currentHand.cards.length !== previousHand.cards.length ||
+       currentHand.cards[0]?.id !== previousHand.cards[0]?.id);
+
+    const isNewHand = currentHand && !previousHand;
+
+    if (isDifferentHand || isNewHand) {
+      // New cards played
+      setSlidingIn(true);
+      setTimeout(() => setSlidingIn(false), 600);
+
+      // Don't update previousHand immediately - keep it for stacked effect
+      setTimeout(() => {
+        setPreviousHand(currentHand);
+      }, 300);
+    } else if (!currentHand && previousHand) {
       // Cards cleared
       setPreviousHand(null);
+    } else if (currentHand && !previousHand) {
+      // Initial hand
+      setPreviousHand(currentHand);
     }
-  }, [gameState?.currentHand]);
+  }, [gameState?.currentHand, gameState?.currentPlayerId]);
 
   const loadGame = async () => {
     try {
@@ -1733,19 +1745,19 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                       ? playAreaError
                         ? 'rgba(231, 76, 60, 0.15)'
                         : 'rgba(46, 204, 113, 0.15)'
-                      : 'rgba(255, 255, 255, 0.95)',
-                    borderRadius: '20px',
+                      : 'rgba(255, 255, 255, 0.98)',
+                    borderRadius: '24px',
                     border: isDraggingOverPlayArea
                       ? playAreaError
-                        ? '4px dashed #e74c3c'
-                        : '4px dashed #2ecc71'
-                      : `3px solid ${theme.panelBorder}`,
+                        ? '5px dashed #e74c3c'
+                        : '5px dashed #2ecc71'
+                      : `5px solid #000`,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     alignItems: 'center',
                     transition: 'background-color 0.2s ease, border 0.2s ease',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.25), 0 0 0 2px rgba(0,0,0,0.1)',
                   }}
                 >
                   {playAreaError && (
@@ -1803,7 +1815,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
                   {gameState.currentHand ? (
                     <>
-                      <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#666', fontWeight: 'bold' }}>
+                      <h3 style={{ margin: '0 0 16px 0', fontSize: '22px', color: '#000', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
                         {gameState.currentHand.type.toUpperCase()}
                       </h3>
                       <div style={{
@@ -1857,21 +1869,21 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                           ))}
                         </div>
                       </div>
-                      <p style={{ margin: 0, fontSize: '16px', color: '#666' }}>
-                        Played by: <strong style={{ fontSize: '18px', color: theme.primaryColor }}>{gameState.currentHand.playerName}</strong>
+                      <p style={{ margin: 0, fontSize: '16px', color: '#000', fontWeight: '600' }}>
+                        Played by: <strong style={{ fontSize: '20px', color: theme.primaryColor, fontWeight: '800' }}>{gameState.currentHand.playerName}</strong>
                       </p>
                     </>
                   ) : (
                     <div style={{
                       textAlign: 'center',
-                      color: isDraggingOverPlayArea ? '#2ecc71' : '#95a5a6',
+                      color: isDraggingOverPlayArea ? '#2ecc71' : '#333',
                       fontSize: '18px',
                     }}>
                       <div style={{ fontSize: '64px', marginBottom: '16px' }}>
                         {isDraggingOverPlayArea ? '✓' : '🎴'}
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: '20px' }}>
-                        {isDraggingOverPlayArea ? 'Drop cards to play!' : 'Drag cards here to play'}
+                      <div style={{ fontWeight: 700, fontSize: '22px' }}>
+                        {isDraggingOverPlayArea ? 'Drop cards to play!' : isMyTurn() ? 'Drag cards here to play' : 'Waiting for your turn...'}
                       </div>
                     </div>
                   )}
@@ -1890,14 +1902,32 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                         <span
                           className="player-text-item"
                           style={{
-                            fontWeight: isCurrentTurn ? 'bold' : 'normal',
-                            color: isCurrentTurn ? theme.primaryColor : '#333',
+                            fontWeight: isCurrentTurn ? '800' : '600',
+                            color: isCurrentTurn ? theme.primaryColor : '#000',
+                            fontSize: isCurrentTurn ? '14px' : '13px',
+                            backgroundColor: isCurrentTurn ? `${theme.primaryColor}20` : 'transparent',
+                            padding: isCurrentTurn ? '4px 8px' : '2px 4px',
+                            borderRadius: '8px',
+                            display: 'inline-block',
+                            border: isCurrentTurn ? `2px solid ${theme.primaryColor}` : 'none',
                           }}
                         >
                           {isCurrentTurn && '👉 '}
                           {player.name}
                           {isYou && ' (You)'}
-                          {cardCount < 5 ? ` (${cardCount})` : ' 🎴'}
+                          {cardCount < 5 ? (
+                            <span style={{
+                              backgroundColor: cardCount <= 2 ? '#e74c3c' : '#f39c12',
+                              color: '#fff',
+                              padding: '2px 6px',
+                              borderRadius: '10px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              marginLeft: '4px',
+                            }}>
+                              {cardCount}
+                            </span>
+                          ) : ' 🎴'}
                         </span>
                       </span>
                     );
@@ -2073,12 +2103,16 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                 transform: 'translateX(-50%)',
                 backgroundColor: theme.primaryColor,
                 color: '#fff',
-                padding: '6px 20px',
-                borderRadius: '16px',
-                fontWeight: 'bold',
-                fontSize: '14px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                padding: '12px 32px',
+                borderRadius: '20px',
+                fontWeight: '800',
+                fontSize: '18px',
+                boxShadow: `0 6px 20px ${theme.primaryColor}80, 0 0 0 4px ${theme.primaryColor}40`,
                 animation: 'pulse 1.5s ease-in-out infinite',
+                border: '3px solid #000',
+                textTransform: 'uppercase',
+                letterSpacing: '2px',
+                zIndex: 100,
               }}>
                 👉 YOUR TURN 👈
               </div>
@@ -2173,38 +2207,81 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Pass button - Secondary (left) */}
+              <button
+                type="button"
+                onClick={handlePass}
+                disabled={!isMyTurnNow || !gameState.currentHand}
+                className="pixel-button"
+                style={{
+                  backgroundColor: 'transparent',
+                  color: isMyTurnNow && gameState.currentHand ? '#666' : '#999',
+                  fontSize: '14px',
+                  padding: '12px 20px',
+                  border: `3px solid ${isMyTurnNow && gameState.currentHand ? '#666' : '#ccc'}`,
+                  minWidth: '110px',
+                  opacity: !isMyTurnNow || !gameState.currentHand ? 0.5 : 1,
+                }}
+              >
+                ⏭️ Pass
+              </button>
+
+              {/* Clear Selection button */}
+              {selectedCards.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCards([])}
+                  className="pixel-button"
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: '#999',
+                    fontSize: '13px',
+                    padding: '10px 16px',
+                    border: '2px solid #ddd',
+                    minWidth: 'auto',
+                    boxShadow: '0 3px 0 #ccc',
+                  }}
+                >
+                  ✕ Clear
+                </button>
+              )}
+
+              {/* Play button - Primary (right) */}
               {(() => {
                 const playError = getPlayError();
                 const canPlay = playError === null;
 
                 return (
                   <button
+                    type="button"
                     onClick={handlePlay}
                     disabled={!canPlay}
                     className="pixel-button"
                     style={{
-                      backgroundColor: canPlay ? theme.secondaryColor : '#95a5a6',
+                      backgroundColor: canPlay ? theme.primaryColor : '#95a5a6',
                       color: '#fff',
-                      opacity: canPlay ? 1 : 0.7,
-                      fontSize: '14px',
-                      padding: '14px 28px',
+                      opacity: canPlay ? 1 : 0.6,
+                      fontSize: '16px',
+                      fontWeight: '800',
+                      padding: '16px 32px',
                       flex: 1,
-                      minWidth: '180px',
+                      minWidth: '200px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       gap: '4px',
+                      boxShadow: canPlay ? '0 8px 0 #000' : '0 4px 0 #666',
                     }}
                   >
-                    <span style={{ fontSize: '16px' }}>
-                      🎴 Play Selected ({selectedCards.length})
+                    <span style={{ fontSize: '18px', fontWeight: '800' }}>
+                      🎴 Play ({selectedCards.length})
                     </span>
                     {playError && (
                       <span style={{
                         fontSize: '11px',
-                        opacity: 0.9,
-                        fontWeight: 'normal',
+                        opacity: 0.95,
+                        fontWeight: '600',
                         textTransform: 'none',
                       }}>
                         {playError}
@@ -2213,23 +2290,6 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                   </button>
                 );
               })()}
-
-              <button
-                onClick={handlePass}
-                disabled={!isMyTurnNow || !gameState.currentHand}
-                className="pixel-button"
-                style={{
-                  backgroundColor: isMyTurnNow && gameState.currentHand ? '#e67e22' : '#95a5a6',
-                  color: '#fff',
-                  fontSize: '16px',
-                  padding: '14px 28px',
-                  flex: 1,
-                  minWidth: '140px',
-                  opacity: !isMyTurnNow || !gameState.currentHand ? 0.7 : 1,
-                }}
-              >
-                ⏭️ Pass
-              </button>
             </div>
           </div>
         )}

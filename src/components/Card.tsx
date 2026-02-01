@@ -61,6 +61,7 @@ export function Card({ card, selected, onClick, draggable, onDragStart, onDragOv
 
   return (
     <div
+      className={selected ? 'selected' : ''}
       onClick={onClick}
       draggable={draggable}
       onDragStart={onDragStart}
@@ -70,14 +71,14 @@ export function Card({ card, selected, onClick, draggable, onDragStart, onDragOv
         width,
         height,
         borderRadius: '6px',
-        border: selected ? '3px solid #3498db' : 'none',
+        border: selected ? '4px solid #3498db' : 'none',
         boxShadow: selected
-          ? '0 8px 16px rgba(52, 152, 219, 0.6), 0 0 0 4px rgba(52, 152, 219, 0.3)'
+          ? '0 12px 24px rgba(52, 152, 219, 0.8), 0 0 0 5px rgba(52, 152, 219, 0.4), 0 0 30px rgba(52, 152, 219, 0.3)'
           : '0 2px 6px rgba(0, 0, 0, 0.3)',
         cursor: onClick ? 'pointer' : draggable ? 'grab' : 'default',
         position: 'relative',
-        transition: 'all 0.2s ease',
-        transform: selected ? 'translateY(-16px) scale(1.08)' : 'none',
+        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        transform: selected ? 'translateY(-20px) scale(1.1)' : 'none',
         userSelect: 'none',
         overflow: 'hidden',
         flexShrink: 0,
