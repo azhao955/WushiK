@@ -48,20 +48,43 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     };
   }, [gameId]);
 
-  // Update sorted hand when player's hand changes
+  // Update sorted hand when player's hand changes, but preserve order
   useEffect(() => {
     const currentPlayer = getCurrentPlayer();
     if (currentPlayer) {
-      setSortedHand(currentPlayer.hand);
+      // Only update if hand size changed or sortedHand is empty
+      if (sortedHand.length === 0 || sortedHand.length !== currentPlayer.hand.length) {
+        setSortedHand(currentPlayer.hand);
+      }
     }
   }, [gameState?.players]);
+
+  // Auto-skip finished players
+  useEffect(() => {
+    if (!gameState || gameState.gameStatus !== 'playing') return;
+
+    const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
+    if (!currentPlayer) return;
+
+    // If current player has finished, automatically skip to next player
+    if (currentPlayer.hasFinished) {
+      const timer = setTimeout(async () => {
+        const updatedState: GameState = {
+          ...gameState,
+          currentPlayerId: getNextPlayerId(),
+        };
+        await updateGameState(updatedState);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [gameState?.currentPlayerId, gameState?.gameStatus]);
 
   // Handle AI player turns
   useEffect(() => {
     if (!gameState || gameState.gameStatus !== 'playing') return;
 
     const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
-    if (!currentPlayer || !currentPlayer.isAI) return;
+    if (!currentPlayer || !currentPlayer.isAI || currentPlayer.hasFinished) return;
 
     // AI player's turn - make a move after a short delay
     const timer = setTimeout(async () => {
@@ -786,12 +809,10 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
   return (
     <div style={{
-      minHeight: '100vh',
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
       background: theme.background,
-      padding: '16px',
       fontFamily: 'Poppins, sans-serif',
       transition: 'background 0.5s ease',
       overflow: 'hidden',
@@ -804,26 +825,44 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         maxWidth: '1400px',
         margin: '0 auto',
         width: '100%',
+        padding: '12px',
         overflow: 'auto',
+        gap: '12px',
       }}>
-        <h1 style={{
-          color: theme.secondaryColor,
-          textShadow: '3px 3px 0 rgba(0, 0, 0, 0.2)',
-          marginBottom: '20px',
-        }}>WuShiK</h1>
-
         <div style={{
-          marginBottom: '20px',
-          padding: '20px',
+          padding: '12px 16px',
           backgroundColor: theme.panelBg,
-          borderRadius: '16px',
+          borderRadius: '12px',
           border: `3px solid ${theme.panelBorder}`,
-          boxShadow: '0 4px 0 rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 3px 0 rgba(0, 0, 0, 0.2)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px',
         }}>
-          <p><strong>Game ID:</strong> {gameId}</p>
-          <p><strong>Round:</strong> {gameState.roundNumber} | <strong>Target Points:</strong> {gameState.targetPoints}</p>
-          <p><strong>Status:</strong> {gameState.gameStatus}</p>
-          <p style={{ color: theme.primaryColor, fontWeight: 600 }}><strong>Message:</strong> {message}</p>
+          <h1 style={{
+            color: theme.secondaryColor,
+            textShadow: '2px 2px 0 rgba(0, 0, 0, 0.2)',
+            margin: 0,
+            fontSize: '28px',
+          }}>WuShiK</h1>
+          <div style={{ display: 'flex', gap: '20px', fontSize: '13px', flexWrap: 'wrap' }}>
+            <span><strong>Game:</strong> {gameId}</span>
+            <span><strong>Round:</strong> {gameState.roundNumber}</span>
+            <span><strong>Target:</strong> {gameState.targetPoints}</span>
+          </div>
+          {message && (
+            <div style={{
+              flex: '1 1 100%',
+              color: theme.primaryColor,
+              fontWeight: 600,
+              fontSize: '13px',
+              marginTop: '4px',
+            }}>
+              {message}
+            </div>
+          )}
         </div>
 
       {gameState.gameStatus === 'waiting' && isHost && (
@@ -953,7 +992,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
           onDrop={handlePlayAreaDrop}
           style={{
             marginBottom: '20px',
-            padding: '20px',
+            padding: '30px',
             backgroundColor: isDraggingOverPlayArea
               ? playAreaError
                 ? 'rgba(231, 76, 60, 0.1)'
@@ -961,15 +1000,15 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               : gameState.currentHand
                 ? '#fff3cd'
                 : 'rgba(149, 165, 166, 0.1)',
-            borderRadius: '12px',
+            borderRadius: '16px',
             border: isDraggingOverPlayArea
               ? playAreaError
-                ? '3px dashed #e74c3c'
-                : '3px dashed #2ecc71'
+                ? '4px dashed #e74c3c'
+                : '4px dashed #2ecc71'
               : gameState.currentHand
-                ? `3px solid ${theme.panelBorder}`
-                : '3px dashed rgba(149, 165, 166, 0.3)',
-            minHeight: '140px',
+                ? `4px solid ${theme.panelBorder}`
+                : '4px dashed rgba(149, 165, 166, 0.3)',
+            minHeight: '180px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
@@ -997,25 +1036,25 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
           {gameState.currentHand ? (
             <>
-              <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#666' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#666', fontWeight: 'bold' }}>
                 Current Hand ({gameState.currentHand.type})
               </h3>
-              <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', gap: '5px', marginBottom: '12px' }}>
                 {gameState.currentHand.cards.map(card => (
                   <Card key={card.id} card={card} />
                 ))}
               </div>
-              <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>
-                Played by: <strong>{gameState.currentHand.playerName}</strong>
+              <p style={{ margin: 0, fontSize: '14px', color: '#666', whiteSpace: 'nowrap', overflow: 'visible' }}>
+                Played by: <strong style={{ fontSize: '16px' }}>{gameState.currentHand.playerName}</strong>
               </p>
             </>
           ) : (
             <div style={{
               textAlign: 'center',
               color: isDraggingOverPlayArea ? '#2ecc71' : '#95a5a6',
-              fontSize: '14px',
+              fontSize: '16px',
             }}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>
+              <div style={{ fontSize: '40px', marginBottom: '10px' }}>
                 {isDraggingOverPlayArea ? '✓' : '🎴'}
               </div>
               <div style={{ fontWeight: 600 }}>
@@ -1030,19 +1069,21 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       {gameState.gameStatus === 'playing' && (
         <div style={{
           position: 'relative',
-          minHeight: '300px',
-          marginBottom: '20px',
+          minHeight: '220px',
+          flex: '0 0 auto',
         }}>
           <h3 style={{
             color: theme.secondaryColor,
-            marginBottom: '15px',
+            marginBottom: '10px',
             textAlign: 'center',
+            fontSize: '16px',
+            margin: '0 0 10px 0',
           }}>Players</h3>
 
-          <div style={{ position: 'relative', height: '280px' }}>
+          <div style={{ position: 'relative', height: '200px' }}>
             {gameState.players.map((player, index) => {
               const cardCount = player.hand.length;
-              const showCount = cardCount < 5;
+              const showCount = cardCount <= 5;
               const totalPlayers = gameState.players.length;
 
               // Calculate position around a circle
@@ -1231,8 +1272,33 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       )}
 
       {currentPlayer && gameState.gameStatus === 'playing' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <div style={{
+          padding: isMyTurn() ? '20px' : '10px',
+          borderRadius: '16px',
+          border: isMyTurn() ? `4px solid ${theme.primaryColor}` : 'none',
+          backgroundColor: isMyTurn() ? `${theme.primaryColor}10` : 'transparent',
+          transition: 'all 0.3s ease',
+          position: 'relative',
+        }}>
+          {isMyTurn() && (
+            <div style={{
+              position: 'absolute',
+              top: '-15px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              backgroundColor: theme.primaryColor,
+              color: '#fff',
+              padding: '8px 24px',
+              borderRadius: '20px',
+              fontWeight: 'bold',
+              fontSize: '16px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              animation: 'pulse 1.5s ease-in-out infinite',
+            }}>
+              👉 YOUR TURN 👈
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', marginTop: isMyTurn() ? '20px' : '0' }}>
             <h3 style={{ margin: 0 }}>Your Hand</h3>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span style={{ fontSize: '12px', color: '#666', fontWeight: 600 }}>Sort by:</span>
@@ -1279,7 +1345,7 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
             <button
               onClick={handlePlay}
               disabled={!isMyTurn() || selectedCards.length === 0}
@@ -1288,9 +1354,13 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                 backgroundColor: isMyTurn() && selectedCards.length > 0 ? theme.secondaryColor : '#95a5a6',
                 color: '#fff',
                 opacity: !isMyTurn() || selectedCards.length === 0 ? 0.5 : 1,
+                fontSize: '18px',
+                padding: '18px 36px',
+                flex: 1,
+                minWidth: '200px',
               }}
             >
-              Play Selected Cards
+              🎴 Play Selected Cards
             </button>
 
             <button
@@ -1300,12 +1370,14 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
               style={{
                 backgroundColor: isMyTurn() && gameState.currentHand ? '#e67e22' : '#95a5a6',
                 color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isMyTurn() && gameState.currentHand ? 'pointer' : 'not-allowed',
+                fontSize: '18px',
+                padding: '18px 36px',
+                flex: 1,
+                minWidth: '150px',
+                opacity: !isMyTurn() || !gameState.currentHand ? 0.5 : 1,
               }}
             >
-              Pass
+              ⏭️ Pass
             </button>
           </div>
         </div>

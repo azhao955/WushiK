@@ -245,6 +245,25 @@ export function sortByRecommended(cards: Card[]): Card[] {
     }
   });
 
+  // Check for WuShiK combo (5, 10, K)
+  const has5 = rankGroups.get('5') || [];
+  const has10 = rankGroups.get('10') || [];
+  const hasK = rankGroups.get('K') || [];
+  const wushikCards: Card[] = [];
+
+  if (has5.length > 0 && has10.length > 0 && hasK.length > 0) {
+    wushikCards.push(has5[0], has10[0], hasK[0]);
+    // Remove one of each from the groups
+    if (has5.length === 1) rankGroups.delete('5');
+    else rankGroups.set('5', has5.slice(1));
+
+    if (has10.length === 1) rankGroups.delete('10');
+    else rankGroups.set('10', has10.slice(1));
+
+    if (hasK.length === 1) rankGroups.delete('K');
+    else rankGroups.set('K', hasK.slice(1));
+  }
+
   // Organize by combo type
   const singles: Card[] = [];
   const pairs: Card[] = [];
@@ -262,6 +281,6 @@ export function sortByRecommended(cards: Card[]): Card[] {
     else if (cards.length >= 4) quads.push(...cards);
   });
 
-  // Combine: singles, pairs, triples, bombs, jokers
-  return [...singles, ...pairs, ...triples, ...quads, ...jokers];
+  // Combine: singles, pairs, triples, then power combos (WuShiK, bombs, jokers) at end
+  return [...singles, ...pairs, ...triples, ...wushikCards, ...quads, ...jokers];
 }

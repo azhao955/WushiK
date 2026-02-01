@@ -19,8 +19,9 @@ const suitSymbols = {
 
 export function Card({ card, selected, onClick, draggable, onDragStart, onDragOver, onDrop }: CardProps) {
   const isRed = card.suit === 'diamonds' || card.suit === 'hearts';
+  // Small joker = black, big joker = red
   const color = card.isJoker
-    ? card.jokerType === 'small' ? '#000' : '#e74c3c'
+    ? card.jokerType === 'big' ? '#e74c3c' : '#000'
     : isRed ? '#e74c3c' : '#000';
 
   const getRankDisplay = () => {
@@ -79,7 +80,7 @@ export function Card({ card, selected, onClick, draggable, onDragStart, onDragOv
             textTransform: 'uppercase',
             marginTop: '-6px',
           }}>
-            {card.jokerType === 'small' ? 'Black' : 'Red'}
+            {card.jokerType === 'big' ? 'Red' : 'Black'}
           </div>
         </div>
       )}
