@@ -214,3 +214,54 @@ export function dealCards(deck: Card[], numPlayers: number): Card[][] {
 
   return hands;
 }
+
+// Sort cards by rank order (3 → 2, jokers at end)
+export function sortByRank(cards: Card[]): Card[] {
+  return [...cards].sort((a, b) => {
+    if (a.isJoker && b.isJoker) {
+      return a.jokerType === 'small' ? -1 : 1;
+    }
+    if (a.isJoker) return 1;
+    if (b.isJoker) return -1;
+    return getCardValue(a) - getCardValue(b);
+  });
+}
+
+// Sort cards by recommended order (combos grouped)
+export function sortByRecommended(cards: Card[]): Card[] {
+  const sorted = [...cards];
+
+  // Group cards by rank
+  const rankGroups = new Map<string, Card[]>();
+  const jokers: Card[] = [];
+
+  sorted.forEach(card => {
+    if (card.isJoker) {
+      jokers.push(card);
+    } else {
+      const key = card.rank!;
+      if (!rankGroups.has(key)) rankGroups.set(key, []);
+      rankGroups.get(key)!.push(card);
+    }
+  });
+
+  // Organize by combo type
+  const singles: Card[] = [];
+  const pairs: Card[] = [];
+  const triples: Card[] = [];
+  const quads: Card[] = [];
+
+  // Sort each group by rank value
+  const sortedRanks = Array.from(rankGroups.entries())
+    .sort((a, b) => getCardValue(a[1][0]) - getCardValue(b[1][0]));
+
+  sortedRanks.forEach(([_, cards]) => {
+    if (cards.length === 1) singles.push(...cards);
+    else if (cards.length === 2) pairs.push(...cards);
+    else if (cards.length === 3) triples.push(...cards);
+    else if (cards.length >= 4) quads.push(...cards);
+  });
+
+  // Combine: singles, pairs, triples, bombs, jokers
+  return [...singles, ...pairs, ...triples, ...quads, ...jokers];
+}

@@ -8,6 +8,8 @@ import {
   validateHand,
   canBeatHand,
   getCardPoints,
+  sortByRank,
+  sortByRecommended,
 } from '../lib/gameLogic';
 import { supabase } from '../lib/supabase';
 import { getTheme } from '../lib/themes';
@@ -30,6 +32,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [isHost, setIsHost] = useState(false);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [sortedHand, setSortedHand] = useState<CardType[]>([]);
 
   // Load game from Supabase and subscribe to updates
   useEffect(() => {
@@ -40,6 +44,14 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       supabase.channel(`game-${gameId}`).unsubscribe();
     };
   }, [gameId]);
+
+  // Update sorted hand when player's hand changes
+  useEffect(() => {
+    const currentPlayer = getCurrentPlayer();
+    if (currentPlayer) {
+      setSortedHand(currentPlayer.hand);
+    }
+  }, [gameState?.players]);
 
   // Handle AI player turns
   useEffect(() => {
@@ -254,6 +266,49 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
     setSelectedCards(prev =>
       prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
     );
+  };
+
+  // Sorting functions
+  const handleSortByRank = () => {
+    const currentPlayer = getCurrentPlayer();
+    if (currentPlayer) {
+      setSortedHand(sortByRank(currentPlayer.hand));
+    }
+  };
+
+  const handleSortByRecommended = () => {
+    const currentPlayer = getCurrentPlayer();
+    if (currentPlayer) {
+      setSortedHand(sortByRecommended(currentPlayer.hand));
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (cardId: string) => (e: React.DragEvent) => {
+    setDraggedCardId(cardId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (targetCardId: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedCardId || draggedCardId === targetCardId) return;
+
+    const draggedIndex = sortedHand.findIndex(c => c.id === draggedCardId);
+    const targetIndex = sortedHand.findIndex(c => c.id === targetCardId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newHand = [...sortedHand];
+    const [draggedCard] = newHand.splice(draggedIndex, 1);
+    newHand.splice(targetIndex, 0, draggedCard);
+
+    setSortedHand(newHand);
+    setDraggedCardId(null);
   };
 
   const handlePlay = async () => {
@@ -597,13 +652,15 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   return (
     <div style={{
       minHeight: '100vh',
+      maxHeight: '100vh',
+      overflow: 'auto',
       background: theme.background,
-      padding: '20px',
+      padding: '16px',
       fontFamily: 'Poppins, sans-serif',
       transition: 'background 0.5s ease',
     }}>
       <div style={{
-        maxWidth: '1400px',
+        maxWidth: '1200px',
         margin: '0 auto',
       }}>
         <h1 style={{
@@ -758,52 +815,149 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
       )}
 
       <div style={{ marginBottom: '20px' }}>
-        <h3>Players:</h3>
-        {gameState.players.map(player => (
-          <div
-            key={player.id}
-            style={{
-              padding: '10px',
-              marginBottom: '5px',
-              backgroundColor: player.id === gameState.currentPlayerId ? '#d4edda' : '#f8f9fa',
-              borderRadius: '4px',
-              border: player.id === playerId ? '2px solid #3498db' : '1px solid #dee2e6',
-            }}
-          >
-            <strong>{player.name}</strong> {player.id === playerId && '(You)'}
-            {player.id === gameState.currentPlayerId && ' 👈 Current Turn'}
-            <br />
-            Cards: {player.hand.length} | Temp Points: {player.tempPoints} | Total: {player.totalPoints}
-          </div>
-        ))}
+        <h3 style={{ color: theme.secondaryColor, marginBottom: '15px' }}>Players</h3>
+        <div style={{ display: 'grid', gap: '10px' }}>
+          {gameState.players.map(player => {
+            const cardCount = player.hand.length;
+            const showCount = cardCount < 5;
+            const stackHeight = Math.min(player.tempPoints / 5, 20); // Visual stack grows with temp points
+
+            return (
+              <div
+                key={player.id}
+                style={{
+                  padding: '16px',
+                  backgroundColor: player.id === gameState.currentPlayerId
+                    ? `${theme.primaryColor}20`
+                    : theme.panelBg,
+                  borderRadius: '12px',
+                  border: player.id === playerId
+                    ? `3px solid ${theme.primaryColor}`
+                    : `2px solid ${theme.panelBorder}`,
+                  boxShadow: player.id === gameState.currentPlayerId
+                    ? `0 0 0 3px ${theme.primaryColor}40`
+                    : 'none',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'all 0.3s ease',
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '16px' }}>{player.name}</strong>
+                    {player.id === playerId && (
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '2px 8px',
+                        backgroundColor: theme.primaryColor,
+                        color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                        borderRadius: '12px',
+                        fontWeight: 'bold',
+                      }}>YOU</span>
+                    )}
+                    {player.isAI && (
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '2px 8px',
+                        backgroundColor: '#95a5a6',
+                        color: '#fff',
+                        borderRadius: '12px',
+                      }}>BOT</span>
+                    )}
+                    {player.id === gameState.currentPlayerId && (
+                      <span style={{ fontSize: '18px' }}>👈</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#666', display: 'flex', gap: '15px', alignItems: 'center' }}>
+                    <span>
+                      {showCount ? (
+                        <><strong>{cardCount}</strong> card{cardCount !== 1 ? 's' : ''}</>
+                      ) : (
+                        <span style={{ color: '#999' }}>🃏 {cardCount} cards</span>
+                      )}
+                    </span>
+                    {player.tempPoints > 0 && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          width: `${Math.max(stackHeight * 2, 20)}px`,
+                          height: `${Math.max(stackHeight, 10)}px`,
+                          background: `linear-gradient(135deg, ${theme.primaryColor} 0%, ${theme.secondaryColor} 100%)`,
+                          borderRadius: '3px',
+                          border: '1px solid #000',
+                        }}></span>
+                        <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{player.tempPoints}</span>
+                      </span>
+                    )}
+                    <span style={{ marginLeft: 'auto' }}>
+                      <strong>Total:</strong> {player.totalPoints} pts
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {currentPlayer && gameState.gameStatus === 'playing' && (
         <div>
-          <h3>Your Hand:</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '15px' }}>
-            {currentPlayer.hand.map(card => (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0 }}>Your Hand</h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleSortByRank}
+                className="pixel-button"
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  backgroundColor: theme.panelBg,
+                  color: '#666',
+                  border: `2px solid ${theme.panelBorder}`,
+                }}
+              >
+                Sort by Rank
+              </button>
+              <button
+                onClick={handleSortByRecommended}
+                className="pixel-button"
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  backgroundColor: theme.primaryColor,
+                  color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                }}
+              >
+                Recommended
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px', minHeight: '110px' }}>
+            {sortedHand.map(card => (
               <Card
                 key={card.id}
                 card={card}
                 selected={selectedCards.includes(card.id)}
                 onClick={() => toggleCardSelection(card.id)}
+                draggable={true}
+                onDragStart={handleDragStart(card.id)}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop(card.id)}
               />
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               onClick={handlePlay}
               disabled={!isMyTurn() || selectedCards.length === 0}
+              className="pixel-button"
               style={{
-                padding: '12px 24px',
-                fontSize: '16px',
-                backgroundColor: isMyTurn() && selectedCards.length > 0 ? '#27ae60' : '#95a5a6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isMyTurn() && selectedCards.length > 0 ? 'pointer' : 'not-allowed',
+                backgroundColor: isMyTurn() && selectedCards.length > 0 ? theme.secondaryColor : '#95a5a6',
+                color: '#fff',
+                opacity: !isMyTurn() || selectedCards.length === 0 ? 0.5 : 1,
               }}
             >
               Play Selected Cards
@@ -812,11 +966,10 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
             <button
               onClick={handlePass}
               disabled={!isMyTurn() || !gameState.currentHand}
+              className="pixel-button"
               style={{
-                padding: '12px 24px',
-                fontSize: '16px',
                 backgroundColor: isMyTurn() && gameState.currentHand ? '#e67e22' : '#95a5a6',
-                color: 'white',
+                color: '#fff',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: isMyTurn() && gameState.currentHand ? 'pointer' : 'not-allowed',
