@@ -34,6 +34,8 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   const [isHost, setIsHost] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [sortedHand, setSortedHand] = useState<CardType[]>([]);
+  const [isDraggingOverPlayArea, setIsDraggingOverPlayArea] = useState(false);
+  const [playAreaError, setPlayAreaError] = useState<string | null>(null);
 
   // Load game from Supabase and subscribe to updates
   useEffect(() => {
@@ -285,7 +287,14 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
   // Drag and drop handlers
   const handleDragStart = (cardId: string) => (e: React.DragEvent) => {
-    setDraggedCardId(cardId);
+    // If dragging a selected card, drag all selected cards
+    if (selectedCards.includes(cardId)) {
+      setDraggedCardId('BUNDLE'); // Special marker for multiple cards
+      e.dataTransfer.setData('cardIds', JSON.stringify(selectedCards));
+    } else {
+      setDraggedCardId(cardId);
+      e.dataTransfer.setData('cardIds', JSON.stringify([cardId]));
+    }
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -296,19 +305,86 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
 
   const handleDrop = (targetCardId: string) => (e: React.DragEvent) => {
     e.preventDefault();
-    if (!draggedCardId || draggedCardId === targetCardId) return;
+    const cardIdsData = e.dataTransfer.getData('cardIds');
+    if (!cardIdsData) return;
 
-    const draggedIndex = sortedHand.findIndex(c => c.id === draggedCardId);
-    const targetIndex = sortedHand.findIndex(c => c.id === targetCardId);
+    const draggedCardIds: string[] = JSON.parse(cardIdsData);
+    if (draggedCardIds.length === 0 || draggedCardIds.includes(targetCardId)) return;
 
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    // Get all dragged cards
+    const draggedCards = draggedCardIds.map(id => sortedHand.find(c => c.id === id)).filter(Boolean) as CardType[];
+    const otherCards = sortedHand.filter(c => !draggedCardIds.includes(c.id));
 
-    const newHand = [...sortedHand];
-    const [draggedCard] = newHand.splice(draggedIndex, 1);
-    newHand.splice(targetIndex, 0, draggedCard);
+    const targetIndex = otherCards.findIndex(c => c.id === targetCardId);
+    if (targetIndex === -1) return;
+
+    // Insert dragged cards at target position
+    const newHand = [...otherCards];
+    newHand.splice(targetIndex, 0, ...draggedCards);
 
     setSortedHand(newHand);
     setDraggedCardId(null);
+  };
+
+  // Play area drag handlers
+  const handlePlayAreaDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDraggingOverPlayArea(true);
+    setPlayAreaError(null);
+  };
+
+  const handlePlayAreaDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverPlayArea(false);
+    setPlayAreaError(null);
+  };
+
+  const handlePlayAreaDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverPlayArea(false);
+
+    if (!isMyTurn()) {
+      setPlayAreaError("Not your turn!");
+      setTimeout(() => setPlayAreaError(null), 2000);
+      return;
+    }
+
+    const cardIdsData = e.dataTransfer.getData('cardIds');
+    if (!cardIdsData) return;
+
+    const draggedCardIds: string[] = JSON.parse(cardIdsData);
+    const currentPlayer = getCurrentPlayer();
+    if (!currentPlayer) return;
+
+    const cards = draggedCardIds.map(id => currentPlayer.hand.find(c => c.id === id)!).filter(Boolean);
+    const handType = validateHand(cards);
+
+    if (!handType) {
+      setPlayAreaError('Invalid hand!');
+      setTimeout(() => setPlayAreaError(null), 2000);
+      return;
+    }
+
+    // Check if can beat current hand
+    if (gameState?.currentHand) {
+      const newHand: PlayedHand = {
+        cards,
+        type: handType,
+        playerId,
+        playerName,
+      };
+
+      if (!canBeatHand(newHand, gameState.currentHand)) {
+        setPlayAreaError('Cannot beat current hand!');
+        setTimeout(() => setPlayAreaError(null), 2000);
+        return;
+      }
+    }
+
+    // Play the hand
+    await playHand(cards, handType);
+    setSelectedCards([]);
   };
 
   const handlePlay = async () => {
@@ -652,16 +728,24 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
   return (
     <div style={{
       minHeight: '100vh',
-      maxHeight: '100vh',
-      overflow: 'auto',
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
       background: theme.background,
       padding: '16px',
       fontFamily: 'Poppins, sans-serif',
       transition: 'background 0.5s ease',
+      overflow: 'hidden',
+      position: 'relative',
     }}>
       <div style={{
-        maxWidth: '1200px',
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        maxWidth: '1400px',
         margin: '0 auto',
+        width: '100%',
+        overflow: 'auto',
       }}>
         <h1 style={{
           color: theme.secondaryColor,
@@ -802,74 +886,199 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
         </div>
       )}
 
-      {gameState.currentHand && gameState.gameStatus === 'playing' && (
-        <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff3cd', borderRadius: '8px' }}>
-          <h3>Current Hand ({gameState.currentHand.type}):</h3>
-          <div style={{ display: 'flex', gap: '5px' }}>
-            {gameState.currentHand.cards.map(card => (
-              <Card key={card.id} card={card} />
-            ))}
-          </div>
-          <p>Played by: {gameState.currentHand.playerName}</p>
+      {/* Play Area - Drag cards here to play */}
+      {gameState.gameStatus === 'playing' && (
+        <div
+          onDragOver={handlePlayAreaDragOver}
+          onDragLeave={handlePlayAreaDragLeave}
+          onDrop={handlePlayAreaDrop}
+          style={{
+            marginBottom: '20px',
+            padding: '20px',
+            backgroundColor: isDraggingOverPlayArea
+              ? playAreaError
+                ? 'rgba(231, 76, 60, 0.1)'
+                : 'rgba(46, 204, 113, 0.1)'
+              : gameState.currentHand
+                ? '#fff3cd'
+                : 'rgba(149, 165, 166, 0.1)',
+            borderRadius: '12px',
+            border: isDraggingOverPlayArea
+              ? playAreaError
+                ? '3px dashed #e74c3c'
+                : '3px dashed #2ecc71'
+              : gameState.currentHand
+                ? `3px solid ${theme.panelBorder}`
+                : '3px dashed rgba(149, 165, 166, 0.3)',
+            minHeight: '140px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            transition: 'all 0.2s ease',
+            position: 'relative',
+          }}
+        >
+          {playAreaError && (
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              backgroundColor: '#e74c3c',
+              color: '#fff',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              animation: 'shake 0.5s',
+            }}>
+              {playAreaError}
+            </div>
+          )}
+
+          {gameState.currentHand ? (
+            <>
+              <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#666' }}>
+                Current Hand ({gameState.currentHand.type})
+              </h3>
+              <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
+                {gameState.currentHand.cards.map(card => (
+                  <Card key={card.id} card={card} />
+                ))}
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>
+                Played by: <strong>{gameState.currentHand.playerName}</strong>
+              </p>
+            </>
+          ) : (
+            <div style={{
+              textAlign: 'center',
+              color: isDraggingOverPlayArea ? '#2ecc71' : '#95a5a6',
+              fontSize: '14px',
+            }}>
+              <div style={{ fontSize: '32px', marginBottom: '8px' }}>
+                {isDraggingOverPlayArea ? '✓' : '🎴'}
+              </div>
+              <div style={{ fontWeight: 600 }}>
+                {isDraggingOverPlayArea ? 'Drop cards to play!' : 'Drag cards here to play'}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      <div style={{ marginBottom: '20px' }}>
-        <h3 style={{ color: theme.secondaryColor, marginBottom: '15px' }}>Players</h3>
-        <div style={{ display: 'grid', gap: '10px' }}>
-          {gameState.players.map(player => {
-            const cardCount = player.hand.length;
-            const showCount = cardCount < 5;
-            const stackHeight = Math.min(player.tempPoints / 5, 20); // Visual stack grows with temp points
+      {/* Around the Table Layout */}
+      {gameState.gameStatus === 'playing' && (
+        <div style={{
+          position: 'relative',
+          minHeight: '300px',
+          marginBottom: '20px',
+        }}>
+          <h3 style={{
+            color: theme.secondaryColor,
+            marginBottom: '15px',
+            textAlign: 'center',
+          }}>Players</h3>
 
-            return (
-              <div
-                key={player.id}
-                style={{
-                  padding: '16px',
-                  backgroundColor: player.id === gameState.currentPlayerId
-                    ? `${theme.primaryColor}20`
-                    : theme.panelBg,
-                  borderRadius: '12px',
-                  border: player.id === playerId
-                    ? `3px solid ${theme.primaryColor}`
-                    : `2px solid ${theme.panelBorder}`,
-                  boxShadow: player.id === gameState.currentPlayerId
-                    ? `0 0 0 3px ${theme.primaryColor}40`
-                    : 'none',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  transition: 'all 0.3s ease',
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <strong style={{ fontSize: '16px' }}>{player.name}</strong>
+          <div style={{ position: 'relative', height: '280px' }}>
+            {gameState.players.map((player, index) => {
+              const cardCount = player.hand.length;
+              const showCount = cardCount < 5;
+              const totalPlayers = gameState.players.length;
+
+              // Calculate position around a circle
+              // Player (you) is always at the bottom center
+              const playerIndex = gameState.players.findIndex(p => p.id === playerId);
+              const relativeIndex = (index - playerIndex + totalPlayers) % totalPlayers;
+
+              let top = '50%';
+              let left = '50%';
+              let transform = 'translate(-50%, -50%)';
+
+              if (totalPlayers === 3) {
+                if (relativeIndex === 0) {
+                  top = '85%'; left = '50%'; transform = 'translate(-50%, -50%)';
+                } else if (relativeIndex === 1) {
+                  top = '15%'; left = '20%'; transform = 'translate(-50%, 0)';
+                } else {
+                  top = '15%'; left = '80%'; transform = 'translate(-50%, 0)';
+                }
+              } else if (totalPlayers === 4) {
+                if (relativeIndex === 0) {
+                  top = '85%'; left = '50%'; transform = 'translate(-50%, -50%)';
+                } else if (relativeIndex === 1) {
+                  top = '50%'; left = '10%'; transform = 'translate(0, -50%)';
+                } else if (relativeIndex === 2) {
+                  top = '15%'; left = '50%'; transform = 'translate(-50%, 0)';
+                } else {
+                  top = '50%'; left = '90%'; transform = 'translate(-100%, -50%)';
+                }
+              } else if (totalPlayers === 5) {
+                const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
+                const radius = 35;
+                left = `${50 + radius * Math.cos(angle)}%`;
+                top = `${50 + radius * Math.sin(angle)}%`;
+                transform = 'translate(-50%, -50%)';
+              } else {
+                // 6+ players: full circle
+                const angle = (relativeIndex * 2 * Math.PI) / totalPlayers - Math.PI / 2;
+                const radius = 38;
+                left = `${50 + radius * Math.cos(angle)}%`;
+                top = `${50 + radius * Math.sin(angle)}%`;
+                transform = 'translate(-50%, -50%)';
+              }
+
+              return (
+                <div
+                  key={player.id}
+                  style={{
+                    position: 'absolute',
+                    top,
+                    left,
+                    transform,
+                    padding: '12px 16px',
+                    backgroundColor: player.id === gameState.currentPlayerId
+                      ? `${theme.primaryColor}20`
+                      : theme.panelBg,
+                    borderRadius: '12px',
+                    border: player.id === playerId
+                      ? `3px solid ${theme.primaryColor}`
+                      : `2px solid ${theme.panelBorder}`,
+                    boxShadow: player.id === gameState.currentPlayerId
+                      ? `0 0 0 3px ${theme.primaryColor}40`
+                      : '0 2px 4px rgba(0,0,0,0.1)',
+                    minWidth: '140px',
+                    maxWidth: '200px',
+                    transition: 'all 0.3s ease',
+                    zIndex: player.id === playerId ? 10 : 1,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '14px' }}>{player.name}</strong>
                     {player.id === playerId && (
                       <span style={{
-                        fontSize: '10px',
-                        padding: '2px 8px',
+                        fontSize: '9px',
+                        padding: '2px 6px',
                         backgroundColor: theme.primaryColor,
                         color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
-                        borderRadius: '12px',
+                        borderRadius: '8px',
                         fontWeight: 'bold',
                       }}>YOU</span>
                     )}
                     {player.isAI && (
                       <span style={{
-                        fontSize: '10px',
-                        padding: '2px 8px',
+                        fontSize: '9px',
+                        padding: '2px 6px',
                         backgroundColor: '#95a5a6',
                         color: '#fff',
-                        borderRadius: '12px',
+                        borderRadius: '8px',
                       }}>BOT</span>
                     )}
                     {player.id === gameState.currentPlayerId && (
-                      <span style={{ fontSize: '18px' }}>👈</span>
+                      <span style={{ fontSize: '14px' }}>👈</span>
                     )}
                   </div>
-                  <div style={{ fontSize: '14px', color: '#666', display: 'flex', gap: '15px', alignItems: 'center' }}>
+                  <div style={{ fontSize: '12px', color: '#666', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span>
                       {showCount ? (
                         <><strong>{cardCount}</strong> card{cardCount !== 1 ? 's' : ''}</>
@@ -878,53 +1087,120 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
                       )}
                     </span>
                     {player.tempPoints > 0 && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          width: `${Math.max(stackHeight * 2, 20)}px`,
-                          height: `${Math.max(stackHeight, 10)}px`,
-                          background: `linear-gradient(135deg, ${theme.primaryColor} 0%, ${theme.secondaryColor} 100%)`,
-                          borderRadius: '3px',
-                          border: '1px solid #000',
-                        }}></span>
-                        <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{player.tempPoints}</span>
+                      <span style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}>
+                        {Array.from({ length: Math.min(Math.ceil(player.tempPoints / 10), 5) }).map((_, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              display: 'inline-block',
+                              width: '10px',
+                              height: `${12 + i * 2}px`,
+                              background: '#fff',
+                              border: '1px solid #000',
+                              borderRadius: '2px',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                            }}
+                          />
+                        ))}
+                        {player.tempPoints >= 50 && (
+                          <span style={{ fontSize: '9px', marginLeft: '2px' }}>💎</span>
+                        )}
                       </span>
                     )}
-                    <span style={{ marginLeft: 'auto' }}>
+                    <span>
                       <strong>Total:</strong> {player.totalPoints} pts
                     </span>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Simplified Players List for Non-Playing States */}
+      {gameState.gameStatus !== 'playing' && (
+        <div style={{ marginBottom: '20px' }}>
+          <h3 style={{ color: theme.secondaryColor, marginBottom: '15px' }}>Players</h3>
+          <div style={{ display: 'grid', gap: '10px' }}>
+            {gameState.players.map(player => {
+              const cardCount = player.hand.length;
+              const showCount = cardCount < 5;
+
+              return (
+                <div
+                  key={player.id}
+                  style={{
+                    padding: '16px',
+                    backgroundColor: theme.panelBg,
+                    borderRadius: '12px',
+                    border: player.id === playerId
+                      ? `3px solid ${theme.primaryColor}`
+                      : `2px solid ${theme.panelBorder}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <strong style={{ fontSize: '16px' }}>{player.name}</strong>
+                      {player.id === playerId && (
+                        <span style={{
+                          fontSize: '10px',
+                          padding: '2px 8px',
+                          backgroundColor: theme.primaryColor,
+                          color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
+                          borderRadius: '12px',
+                          fontWeight: 'bold',
+                        }}>YOU</span>
+                      )}
+                      {player.isAI && (
+                        <span style={{
+                          fontSize: '10px',
+                          padding: '2px 8px',
+                          backgroundColor: '#95a5a6',
+                          color: '#fff',
+                          borderRadius: '12px',
+                        }}>BOT</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#666' }}>
+                      <strong>Total:</strong> {player.totalPoints} pts
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {currentPlayer && gameState.gameStatus === 'playing' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0 }}>Your Hand</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#666', fontWeight: 600 }}>Sort by:</span>
               <button
                 onClick={handleSortByRank}
                 className="pixel-button"
                 style={{
-                  padding: '8px 16px',
-                  fontSize: '12px',
+                  padding: '6px 14px',
+                  fontSize: '11px',
                   backgroundColor: theme.panelBg,
                   color: '#666',
                   border: `2px solid ${theme.panelBorder}`,
                 }}
               >
-                Sort by Rank
+                Rank
               </button>
               <button
                 onClick={handleSortByRecommended}
                 className="pixel-button"
                 style={{
-                  padding: '8px 16px',
-                  fontSize: '12px',
+                  padding: '6px 14px',
+                  fontSize: '11px',
                   backgroundColor: theme.primaryColor,
                   color: gameState.theme === 'space' || gameState.theme === 'neon' ? '#fff' : '#000',
                 }}
@@ -980,6 +1256,20 @@ export function Game({ gameId, playerId, playerName, config }: GameProps) {
           </div>
         </div>
       )}
+      </div>
+
+      {/* Creator Credit */}
+      <div style={{
+        position: 'fixed',
+        bottom: '12px',
+        right: '16px',
+        fontSize: '11px',
+        color: 'rgba(0, 0, 0, 0.4)',
+        fontWeight: 600,
+        textShadow: '0 1px 2px rgba(255, 255, 255, 0.8)',
+        zIndex: 1000,
+      }}>
+        Created by Alan Zhao
       </div>
     </div>
   );

@@ -421,6 +421,20 @@ export function Lobby({ onJoinGame }: LobbyProps) {
       }}>
         Select a theme and watch it change!
       </div>
+
+      {/* Creator Credit */}
+      <div style={{
+        position: 'fixed',
+        bottom: '12px',
+        right: '16px',
+        fontSize: '11px',
+        color: 'rgba(255, 255, 255, 0.6)',
+        fontWeight: 600,
+        textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+        zIndex: 1000,
+      }}>
+        Created by Alan Zhao
+      </div>
     </div>
   );
 }

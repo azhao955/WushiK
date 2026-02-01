@@ -77,15 +77,16 @@ export function Card({ card, selected, onClick, draggable, onDragStart, onDragOv
           height: '100%',
           color: color,
         }}>
-          <div style={{ fontSize: '28px', marginBottom: '4px' }}>
-            {card.jokerType === 'small' ? '🃏' : '🤡'}
+          <div style={{ fontSize: '42px' }}>
+            🃏
           </div>
           <div style={{
-            fontSize: '8px',
+            fontSize: '9px',
             fontWeight: 'bold',
             textTransform: 'uppercase',
+            marginTop: '-6px',
           }}>
-            {card.jokerType === 'small' ? 'Small' : 'Big'}
+            {card.jokerType === 'small' ? 'Black' : 'Red'}
           </div>
         </div>
       )}
